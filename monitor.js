@@ -579,14 +579,19 @@ async function scanAnomalyTab(page) {
     }
     if (!moved) {
       // 连点 3 次页码都没变：记下错误并停止本页扫描，已抓到的 ID 仍可用，不把错误污染到商品结果。
-      scanError = `翻页失败：停留在第 ${beforePageNo} 页，已抓 ${anomalyIds.size} 个（页面标注 ${tab.count}）。`;
+      const ids = [...anomalyIds];
+      const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
+      scanError = `翻页失败：停留在第 ${beforePageNo} 页，已抓 ${anomalyIds.size} 个（页面标注 ${tab.count}）；ID：${idList}`;
       break;
     }
     await page.waitForTimeout(1500); // 页码变化后等行渲染稳定
   }
   // 用 tab 括号里的异常数量做校验：抓到数与页面标注不符时在后台日志提醒，便于排查翻页/去重问题。
+  // 数量不符或翻页失败时同时打印已抓到的 ID 明细（最多 20 个），方便直接核对抓的是哪些商品。
   if (tab.count != null && anomalyIds.size !== tab.count) {
-    await log('warn', `异常 tab 数量与页面标注不符：抓到 ${anomalyIds.size} 个，页面标注 ${tab.count} 个${scanError ? `；${scanError}` : ''}。`);
+    const ids = [...anomalyIds];
+    const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
+    await log('warn', `异常 tab 数量与页面标注不符：抓到 ${anomalyIds.size} 个，页面标注 ${tab.count} 个${scanError ? `；${scanError}` : ''}；ID：${idList}`);
   }
   return { anomalyIds, declaredCount: tab.count, error: scanError };
 }
