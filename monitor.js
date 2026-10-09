@@ -569,8 +569,10 @@ async function scanAnomalyTab(page) {
   }).catch(() => null);
   const beforeFirst = await firstRowId();
   if (!tab.wasActive) {
+    // 无数字标注（如「异常」不带 (N)）说明当前没有异常商品：3 秒内确认空列表即可，不必等满 10 秒。
+    const waitMs = tab.count === null ? 3000 : 10000;
     let listChanged = false;
-    for (let w = 0; w < 10000; w += 500) {
+    for (let w = 0; w < waitMs; w += 500) {
       await page.waitForTimeout(500);
       const now = await firstRowId();
       // 点击前有行：首行变化才算切换成功；点击前无行（列表还没渲染出来）：
@@ -578,9 +580,14 @@ async function scanAnomalyTab(page) {
       if (now && (beforeFirst === null || now !== beforeFirst)) { listChanged = true; break; }
     }
     if (!listChanged) {
-      scanError = beforeFirst === null
-        ? `点击「异常」tab 后商品列表未渲染（10 秒内无商品行），页面可能未加载完整。`
-        : `点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst}）。`;
+      if (tab.count === null || tab.count === 0) {
+        // 页面未标注异常数量（如「异常」tab 不带数字）= 当前无异常商品，空列表属正常，视为无异常。
+        scanError = '';
+      } else {
+        scanError = beforeFirst === null
+          ? `点击「异常」tab 后商品列表未渲染（10 秒内无商品行），页面标注 ${tab.count} 个异常但未加载。`
+          : `点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst}）。`;
+      }
     }
   }
   await page.waitForTimeout(1500); // 列表渲染稳定
