@@ -795,6 +795,16 @@ const server = http.createServer(async (req, res) => {
       const scheduleFailures = (scheduleResult || []).filter((r) => /失败|格式不对/.test(r));
       if (scheduleFailures.length) detailParts.push('自动任务：' + scheduleFailures.join('、'));
       logOperation('保存配置', detailParts.join('；'), getOperator(req));
+      // 保存后自动提交版本库留痕（失败不影响保存；config.json 的 backup 文件已被 .gitignore 排除）。
+      try {
+        const gitBin = 'C:\\Program Files\\Git\\cmd\\git.exe';
+        const g1 = spawn(gitBin, ['add', '-A'], { cwd: ROOT, windowsHide: true });
+        g1.on('error', () => {});
+        g1.on('close', () => {
+          const g2 = spawn(gitBin, ['commit', '-m', 'auto commit ' + new Date().toLocaleString('zh-CN', { hour12: false }), '--quiet'], { cwd: ROOT, windowsHide: true });
+          g2.on('error', () => {});
+        });
+      } catch (_) {}
       sendJson(res, 200, { ok: true, scheduleResult });
       return;
     }
