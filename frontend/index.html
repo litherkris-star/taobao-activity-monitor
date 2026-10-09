@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>淘宝/天猫活动监控 - 网页管理</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <!-- 左侧导航 -->
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>淘宝/天猫活动监控</h1>
+      <div class="sub">多店铺异常巡检 · 管理后台</div>
+    </div>
+    <nav class="nav">
+      <div class="nav-item active" data-tab="status" onclick="switchTab('status')"><span class="ico">📊</span><span>检测总览</span></div>
+      <div class="nav-item" data-tab="shops" onclick="switchTab('shops')"><span class="ico">🏬</span><span>店铺与商品</span></div>
+      <div class="nav-item" data-tab="alerts" onclick="switchTab('alerts')"><span class="ico">🔔</span><span>报警设置</span></div>
+      <div class="nav-item" data-tab="board" onclick="switchTab('board')"><span class="ico">📋</span><span>信息看板</span></div>
+    </nav>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="main">
+    <div class="topbar">
+      <span class="page-title" id="pageTitle">检测总览</span>
+      <span id="saveState" class="muted" style="display:none"></span>
+      <span class="spacer"></span>
+      <select id="operatorInput" title="选择花名（操作人），操作日志会记录操作人；未选择花名不能保存修改" style="width:140px;padding:6px 10px;border:1px solid #d9dde3;border-radius:8px;font-size:13px;outline:none;background:#fff;" onchange="saveOperator()"><option value="" disabled selected hidden>请选择花名</option></select>
+      <button class="btn-primary" onclick="saveAll()">保存全部修改</button>
+      <button class="btn-plain" onclick="document.getElementById('fileInput').click()">导入Excel</button>
+      <button class="btn-plain" onclick="downloadTemplate()">下载导入模板</button>
+    </div>
+
+    <div class="content">
+      <!-- ========== 检测总览 ========== -->
+      <div id="pageStatus">
+        <div class="card">
+          <div class="card-head"><b>巡检控制</b></div>
+          <div class="card-body">
+            <div class="toolbar">
+              <button class="btn-primary" id="btnRunOnce" onclick="runOnce()">立即检测一次（全部店铺）</button>
+              <button class="btn-danger hidden" id="btnRunCancel" onclick="cancelRun()" title="中止正在运行的手动检测，不用等全部店铺跑完">取消检测</button>
+              <span class="sep"></span>
+              <button class="btn-danger" id="btnPauseToggle" onclick="togglePause()">停止自动检测</button>
+              <button class="btn-plain" onclick="loadResults()">刷新结果</button>
+              <span id="runState" class="muted"></span>
+            </div>
+          </div>
+        </div>
+        <div id="resultSummary"></div>
+        <div class="card">
+          <div class="card-head"><b>商品检测结果</b><span class="muted" id="resultGroupHint">按店铺分组，点击店铺名展开/收起</span></div>
+          <div class="card-body" id="resultTable"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <b>检测日志</b>
+            <span class="muted">已精简，点击「原始日志」查看完整内容</span>
+            <span style="margin-left:auto"></span>
+            <button class="btn-plain btn-mini" onclick="exportLog()" title="导出最近60分钟的检测日志到文件">导出最近一小时日志</button>
+            <button class="btn-plain btn-mini" id="btnLogToggle" onclick="toggleLogMode()">查看原始日志</button>
+          </div>
+          <div class="card-body"><div id="logLines" class="log-list">加载中...</div><pre class="log hidden" id="logTail">加载中...</pre></div>
+        </div>
+      </div>
+
+      <!-- ========== 信息看板（独立页：操作日志 + 服务状态 + 每日日报 + 检测趋势） ========== -->
+      <div id="pageBoard" class="hidden">
+        <div class="card">
+          <div class="card-head">
+            <b>操作日志</b>
+            <span class="muted" id="opCount">保存 / 导入 / 恢复网址等后台操作记录</span>
+            <input type="date" id="opDate" style="width:132px;padding:4px 8px;font-size:12px;" title="按日期筛选（留空=最近记录）" onchange="opDateFilter=this.value; opLoadLimit=50; loadOperations()">
+            <span style="margin-left:auto"></span>
+            <button class="btn-plain btn-mini" onclick="loadOperations()">刷新</button>
+          </div>
+          <div class="card-body">
+            <div id="opLogList" class="op-log-list">加载中...</div>
+            <div style="text-align:center;margin-top:8px;"><button class="btn-plain btn-mini hidden" id="opMore" onclick="opLoadLimit += 100; loadOperations()">加载更多</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><b>服务状态</b><span class="muted">服务自动恢复记录（守护脚本自动拉起，不再发钉钉）</span><span style="margin-left:auto"></span><button class="btn-plain btn-mini" onclick="loadBoard()">刷新</button></div>
+          <div class="card-body"><div id="boardEvents" class="log-list">加载中...</div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><b>每日日报</b><span class="muted" id="boardReportHint">点击日期查看当日简报</span></div>
+          <div class="card-body">
+            <div id="boardReportDates" class="board-dates"></div>
+            <pre id="boardReportDetail" class="board-report">（选择日期查看）</pre>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><b>检测趋势</b><span class="muted" id="trendHint">最近 48 轮检测的异常数 / 店铺失败数</span><span style="margin-left:auto"></span><button class="btn-plain btn-mini" onclick="loadHistory()">刷新</button></div>
+          <div class="card-body">
+            <div id="trendChart" style="width:100%;height:230px;"></div>
+            <div id="shopErrorChart" style="width:100%;height:190px;margin-top:6px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 店铺与商品 ========== -->
+      <div id="pageShops" class="hidden">
+        <div class="notice">修改后请点击右上角「保存全部修改」才会写入配置文件；正在运行的监控会在下一轮检测自动使用新配置。店铺名不要带【】括号。</div>
+        <div class="card">
+          <div class="card-head"><b>批量操作</b></div>
+          <div class="card-body">
+            <div class="toolbar">
+              <button class="btn-plain" onclick="addShop()">+ 添加店铺</button>
+              <span class="sep"></span>
+              <input type="text" id="globalActivityName" placeholder="活动名称（一键通用）" style="width:170px">
+              <button class="btn-plain" onclick="applyActivityNameAll()">活动名称应用到全部商品</button>
+              <span class="sep"></span>
+              <input type="text" id="globalActivityUrl" placeholder="店铺活动报名记录页URL（一键通用）" style="width:240px">
+              <button class="btn-plain" onclick="applyActivityUrlAll()" title="把同一个活动报名记录页URL一次填到全部店铺的「活动报名记录页URL」栏">活动URL应用到全部店铺</button>
+              <button class="btn-danger" onclick="restoreSuperDealUrls()" title="把全部店铺的活动报名记录页URL一键恢复为超级立减活动网址">恢复超级立减活动网址</button>
+              <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden" onchange="importExcel(this)">
+            </div>
+          </div>
+        </div>
+        <div id="shopList"></div>
+      </div>
+
+      <!-- ========== 报警设置 ========== -->
+      <div id="pageAlerts" class="hidden">
+        <div class="card">
+          <div class="card-head"><b>检测频率</b></div>
+          <div class="card-body">
+            <div class="row">
+              <label class="field" style="flex:0 0 200px;">检测间隔<span class="muted">自动检测多久跑一轮</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="number" id="intervalInput" min="1" max="1440" style="width:110px" title="自动检测的时间间隔，单位分钟，默认 30（每半小时一轮）">
+                  <span class="muted">分钟</span>
+                </div>
+              </label>
+              <label class="field" style="flex:0 0 200px;">重复提醒<span class="muted">同一异常持续期间的提醒间隔</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="number" id="repeatInput" min="0" max="1440" style="width:110px" title="同一异常持续期间的重复提醒间隔，单位分钟，默认 30；填 0 = 异常没恢复就每轮都提醒">
+                  <span class="muted">分钟</span>
+                </div>
+              </label>
+              <label class="field" style="flex:0 0 320px;">免打扰时段<span class="muted">静默期内商品异常不推钉钉（店铺故障仍推送）</span>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                  <input type="time" id="quietStart" style="width:110px" title="免打扰开始时间">
+                  <span class="muted">至</span>
+                  <input type="time" id="quietEnd" style="width:110px" title="免打扰结束时间，支持跨天（如 23:00 至 08:00）">
+                  <span class="muted">留空=不启用</span>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><b>自动任务</b><span class="muted">每日简报与定时重启（保存后立即生效）</span></div>
+          <div class="card-body">
+            <div class="row">
+              <label class="field" style="flex:0 0 320px;">每日检测简报<span class="muted">每天定时生成当日汇总到信息看板</span>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+                  <label class="switch-box"><input type="checkbox" id="reportEnabled"><span>启用</span></label>
+                  <input type="time" id="reportTime" style="width:120px" title="每日简报生成时间，默认 21:00">
+                  <label class="check" style="margin-left:4px;" title="开启后日报除写入信息看板外，同时推送到钉钉群"><input type="checkbox" id="reportDingEnabled"><span>同时推送钉钉</span></label>
+                </div>
+              </label>
+              <label class="field" style="flex:0 0 300px;">每日自动重启<span class="muted">低峰期重启监控释放内存</span>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+                  <label class="switch-box"><input type="checkbox" id="restartEnabled"><span>启用</span></label>
+                  <input type="time" id="restartTime" style="width:120px" title="自动重启时间，默认 04:00（重启后 45 分钟再跑检测，不打扰）">
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <b>负责人手机号映射</b>
+            <span class="muted" id="ownerPhonesSummary"></span>
+            <span style="margin-left:auto"></span>
+            <button class="btn-plain btn-mini" id="btnOwnerPhonesToggle" onclick="toggleOwnerPhones()">展开</button>
+          </div>
+          <div class="card-body hidden" id="ownerPhonesBody">
+            <div class="muted" style="margin-bottom:8px;">每行一条，格式：负责人=手机号（姓名必须和商品表里的「负责人」完全一致）。手机号只填 11 位数字即可，+86- 前缀、空格、横杠会自动去掉。钉钉要真正 @ 到本人必须用其绑定的手机号；同一人负责多个商品时只 @ 一次。没配手机号的负责人只会在消息里显示 @名字，不会真正提醒到本人。</div>
+            <textarea id="ownerPhonesInput" rows="3" style="width:100%;font-family:monospace;" placeholder="张三=13812345678&#10;李四=13987654321"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/echarts.min.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

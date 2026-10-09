@@ -17,7 +17,7 @@ const RESULTS_PATH = path.join(ROOT, 'data', 'last-results.json');
 const PAUSE_FLAG_PATH = path.join(ROOT, 'data', 'monitor-paused.flag');
 const LOG_PATH = path.join(ROOT, 'logs', 'monitor.log');
 const OP_LOG_PATH = path.join(ROOT, 'data', 'operation.log');
-const ADMIN_HTML = path.join(ROOT, 'admin.html');
+const ADMIN_HTML = path.join(ROOT, 'frontend', 'index.html');
 const PORT = Math.max(1024, Math.min(65535, Number(process.env.ADMIN_PORT || 3080)));
 
 // 启动时读一次 config.json 取 adminHost/adminToken（环境变量优先；修改后需重启本服务生效）。
@@ -643,6 +643,21 @@ const server = http.createServer(async (req, res) => {
       const vendorRoot = path.join(ROOT, 'vendor');
       const filePath = path.normalize(path.join(vendorRoot, rel));
       if (!rel || rel.includes('..') || !filePath.startsWith(vendorRoot + path.sep) || !fs.statSync(filePath, { throwIfNoEntry: false })?.isFile()) {
+        sendJson(res, 404, { error: 'not found' });
+        return;
+      }
+      const ext = path.extname(filePath).toLowerCase();
+      const ctype = ext === '.js' ? 'application/javascript; charset=utf-8' : (ext === '.css' ? 'text/css; charset=utf-8' : 'application/octet-stream');
+      res.writeHead(200, { 'Content-Type': ctype, 'Cache-Control': 'no-cache' });
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+    // 静态资源：assets/ 目录（提取后的前端目录 frontend/assets）。仅允许 ROOT/frontend/assets 内的文件，防路径穿越。
+    if (req.method === 'GET' && url.pathname.startsWith('/assets/')) {
+      const rel = decodeURIComponent(url.pathname.slice('/assets/'.length)).replace(/\\/g, '/');
+      const assetsRoot = path.join(ROOT, 'frontend', 'assets');
+      const filePath = path.normalize(path.join(assetsRoot, rel));
+      if (!rel || rel.includes('..') || !filePath.startsWith(assetsRoot + path.sep) || !fs.statSync(filePath, { throwIfNoEntry: false })?.isFile()) {
         sendJson(res, 404, { error: 'not found' });
         return;
       }
