@@ -939,6 +939,24 @@
           "priceTolerance": 0.01,
           "enabled": true,
           "shopName": "英港旗舰店"
+        },
+        {
+          "productId": "1009162092774",
+          "productName": "A123灰透娃娃柜",
+          "activityName": "10月超级88",
+          "activityUrl": "",
+          "activityDeadline": "",
+          "owner": "松柏",
+          "monitorMode": "added_time",
+          "monitorSince": "",
+          "monitorActivityKeywords": "",
+          "recoveryActivityKeywords": "",
+          "recoveryGraceMinutes": 0,
+          "expectedPrice": 0,
+          "minStock": 0,
+          "priceTolerance": 0.01,
+          "enabled": true,
+          "shopName": "英港旗舰店"
         }
       ]
     },
