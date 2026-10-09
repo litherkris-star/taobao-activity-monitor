@@ -909,25 +909,52 @@ async function runShopAttempt(config, shop) {
     let detectedShopNames = [];
     let shopVerified = false;
 
-    // 直接登录模式：浏览器启动后先用账号密码登录，再逐页检测，
-    // 省去“访问活动页→等待重定向→判定登录页”的无效等待（实测 headless 实例重启后会话基本必失效）。
+    // 登录保底策略：优先复用登录态（profile / 用户 Chrome 里的 cookie），会话有效就直接检测；
+    // 失效再走账号密码登录；密码登录也被风控拦截时，自动弹可见登录窗口挂起等人工验证（不阻塞其他店铺）。
+    let sessionValid = false;
     if (shop.account && shop.password) {
-      await log('info', `[${shop.name}] 直接登录模式，正在用账号密码登录…`);
-      const relogin = await attemptPasswordLogin(page, shop, log, {
-        challengeWaitSeconds: config.reloginChallengeWaitSeconds,
-        manualAssist: config.browserMode === 'cdp' || !config.headless,
-      });
-      if (!relogin.ok) {
-        await promptManualLogin(shop);
-        throw new Error(`直接登录失败：${relogin.reason}。请检查账号密码是否正确，或人工完成验证（node shop-login.js ${shop.key}）。`);
+      // ① 先试登录态：直接访问该店铺第一个活动页，若被重定向到登录页说明会话已失效。
+      const probeUrl = groups.keys().next().value;
+      if (probeUrl) {
+        try {
+          await page.goto(probeUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
+          await page.waitForTimeout(6000);
+          const curUrl = page.url();
+          const probeBody = (await page.locator('body').innerText().catch(() => '')).slice(0, 30000);
+          sessionValid = !isLoginPage(curUrl, probeBody);
+        } catch (_) {
+          sessionValid = false;
+        }
+        if (sessionValid) {
+          await log('info', `[${shop.name}] 登录态有效，直接复用，跳过密码登录。`);
+        } else {
+          await log('info', `[${shop.name}] 登录态已失效，改用账号密码登录…`);
+        }
       }
-      await log('info', `[${shop.name}] 自动登录成功，开始检测。`);
-      await clearLoginPromptFlag(shop);
+      // ② 密码保底：仅登录态失效时用账号密码登录。
+      if (!sessionValid) {
+        await log('info', `[${shop.name}] 正在用账号密码登录…`);
+        const relogin = await attemptPasswordLogin(page, shop, log, {
+          challengeWaitSeconds: config.reloginChallengeWaitSeconds,
+          manualAssist: config.browserMode === 'cdp' || !config.headless,
+        });
+        if (!relogin.ok) {
+          await promptManualLogin(shop);
+          throw new Error(`直接登录失败：${relogin.reason}。请检查账号密码是否正确，或人工完成验证（node shop-login.js ${shop.key}）。`);
+        }
+        await log('info', `[${shop.name}] 自动登录成功，开始检测。`);
+        await clearLoginPromptFlag(shop);
+      }
     }
 
+    let firstGroup = true;
     for (const [groupUrl, groupProducts] of groups) {
-      await page.goto(groupUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
-      await page.waitForTimeout(6000);
+      // 登录态有效时第一个活动页已在探测阶段加载好，不再重复访问；其余页面（含密码登录成功后的首页）照常加载。
+      if (!(sessionValid && firstGroup)) {
+        await page.goto(groupUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
+        await page.waitForTimeout(6000);
+      }
+      firstGroup = false;
 
       let currentUrl = page.url();
       const title = await page.title();
