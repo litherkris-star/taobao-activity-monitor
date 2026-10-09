@@ -1380,9 +1380,11 @@ async function daemon() {
     await cleanupStorageOncePerHour();
     await checkRecoveredFlags();
     const config = await loadConfig().catch(() => ({ intervalMinutes: 30 }));
+    const cycleStartAt = Date.now();
     await runCycle();
+    const cycleElapsedSec = Math.round((Date.now() - cycleStartAt) / 1000);
     const waitMs = Math.max(Number(config.intervalMinutes) || 30, 1) * 60 * 1000;
-    await log('info', `下次检测将在 ${Math.round(waitMs / 60000)} 分钟后执行。`);
+    await log('info', `本轮检测耗时 ${cycleElapsedSec} 秒，下次检测将在 ${Math.round(waitMs / 60000)} 分钟后执行。`);
     let elapsed = 0;
     while (!stopRequested && elapsed < waitMs && !isMonitorPaused()) {
       const step = Math.min(1000, waitMs - elapsed);
