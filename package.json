@@ -1,0 +1,19 @@
+{
+  "name": "taobao-tmall-activity-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Taobao/Tmall multi-shop activity anomaly monitor: offline/removed, product missing from activity, price & stock mismatch, DingTalk alerts",
+  "main": "monitor.js",
+  "scripts": {
+    "configure": "node configure.js",
+    "login": "node shop-login.js",
+    "once": "node monitor.js --once",
+    "start": "node monitor.js",
+    "whitelist": "node whitelist-manager.js",
+    "notification-test": "node notification-test.js"
+  },
+  "dependencies": {
+    "playwright": "1.61.1",
+    "xlsx": "^0.18.5"
+  }
+}

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>淘宝活动监控 - 启动器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 520px;
+            width: 100%;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        .header p {
+            color: #999;
+            font-size: 14px;
+        }
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .status-item:last-child {
+            border-bottom: none;
+        }
+        .status-label {
+            color: #666;
+            font-size: 14px;
+        }
+        .status-value {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .status-running {
+            color: #28a745;
+        }
+        .status-stopped {
+            color: #dc3545;
+        }
+        .token-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #666;
+        }
+        .token-row input {
+            flex: 1;
+            padding: 7px 10px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 13px;
+            outline: none;
+        }
+        .token-row input:focus {
+            border-color: #667eea;
+        }
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .btn {
+            padding: 14px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-start {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+        }
+        .btn-start:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(40, 167, 69, 0.3);
+        }
+        .btn-stop {
+            background: linear-gradient(135deg, #dc3545, #fd7e14);
+            color: white;
+        }
+        .btn-stop:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(220, 53, 69, 0.3);
+        }
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #666;
+            border: 1px solid #e9ecef;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background: #e9ecef;
+        }
+        .links {
+            margin-top: 8px;
+            padding-top: 16px;
+            border-top: 1px solid #e9ecef;
+        }
+        .links a {
+            display: block;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            color: #667eea;
+            text-decoration: none;
+            margin-bottom: 8px;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        .links a:hover {
+            background: #e9ecef;
+        }
+        .hint {
+            font-size: 12px;
+            color: #adb5bd;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: all 0.3s;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>淘宝活动监控启动器</h1>
+            <p>状态查看 / 启动 / 停止监控服务</p>
+        </div>
+
+        <div class="status-card">
+            <div class="status-item">
+                <span class="status-label">管理后台（端口3080）</span>
+                <span class="status-value" id="adminStatus">检测中...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">监控服务</span>
+                <span class="status-value" id="monitorStatus">检测中...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">本机访问地址</span>
+                <span class="status-value" style="font-size: 13px;">http://127.0.0.1:3080</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">局域网地址</span>
+                <span class="status-value" style="font-size: 13px;" id="lanAddr">获取中...</span>
+            </div>
+        </div>
+
+        <div class="token-row">
+            <span>管理口令（可选）：</span>
+            <input type="password" id="adminToken" placeholder="未设置口令则留空" autocomplete="off">
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-start" id="btnStart" onclick="startServices()">启动服务</button>
+            <button class="btn btn-stop" id="btnStop" onclick="stopServices()">停止服务</button>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-secondary" onclick="refreshStatus()">刷新状态</button>
+            <button class="btn btn-secondary" onclick="openAdmin()">打开管理后台</button>
+        </div>
+
+        <div class="links">
+            <a href="#" id="linkLan" target="_blank" style="display:none;">📊 局域网访问（同事用）</a>
+            <a href="http://127.0.0.1:3080" target="_blank">🏠 本机访问</a>
+        </div>
+
+        <div class="hint">提示：启动/停止后约 3 秒自动刷新状态；「停止服务」也会关闭管理后台本身。</div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API = 'http://127.0.0.1:3080';
+
+        function apiToken() {
+            const t = document.getElementById('adminToken').value.trim();
+            if (!t) return {};
+            return { 'X-Admin-Token': encodeURIComponent(t) };
+        }
+
+        async function refreshStatus() {
+            let lanIps = [];
+            try {
+                const adminRes = await fetch(API + '/api/status', { signal: AbortSignal.timeout(2500), headers: apiToken() });
+                if (!adminRes.ok) throw new Error('http ' + adminRes.status);
+                const data = await adminRes.json();
+                document.getElementById('adminStatus').textContent = '运行中';
+                document.getElementById('adminStatus').className = 'status-value status-running';
+                lanIps = (data && Array.isArray(data.lanIps)) ? data.lanIps : [];
+            } catch {
+                document.getElementById('adminStatus').textContent = '已停止';
+                document.getElementById('adminStatus').className = 'status-value status-stopped';
+            }
+
+            const lanEl = document.getElementById('lanAddr');
+            const linkLan = document.getElementById('linkLan');
+            if (lanIps.length) {
+                lanEl.textContent = 'http://' + lanIps[0] + ':3080';
+                linkLan.href = 'http://' + lanIps[0] + ':3080';
+                linkLan.style.display = 'block';
+            } else {
+                lanEl.textContent = '未开放（adminHost 非 0.0.0.0）';
+                linkLan.style.display = 'none';
+            }
+
+            try {
+                const monitorRes = await fetch(API + '/api/monitor/status', { signal: AbortSignal.timeout(2500), headers: apiToken() });
+                if (!monitorRes.ok) throw new Error('http ' + monitorRes.status);
+                const data = await monitorRes.json();
+                // 必须检查 running 字段：接口返回 200 不代表监控服务在跑。
+                if (data && data.running) {
+                    document.getElementById('monitorStatus').textContent = '运行中' + (data.paused ? '（已暂停）' : '');
+                    document.getElementById('monitorStatus').className = 'status-value status-running';
+                } else {
+                    document.getElementById('monitorStatus').textContent = data && data.paused ? '已暂停' : '已停止';
+                    document.getElementById('monitorStatus').className = 'status-value status-stopped';
+                }
+            } catch {
+                document.getElementById('monitorStatus').textContent = '检测中...';
+                document.getElementById('monitorStatus').className = 'status-value';
+            }
+        }
+
+        async function startServices() {
+            const btn = document.getElementById('btnStart');
+            btn.disabled = true;
+            showToast('正在启动监控服务...');
+            try {
+                const res = await fetch(API + '/api/service/start', { method: 'POST', headers: apiToken(), signal: AbortSignal.timeout(8000) });
+                const data = await res.json();
+                showToast((data && data.message) || (res.ok ? '已发起启动' : '启动失败'));
+            } catch (error) {
+                showToast('启动失败：' + error.message);
+            } finally {
+                btn.disabled = false;
+                setTimeout(refreshStatus, 3000);
+            }
+        }
+
+        async function stopServices() {
+            if (!confirm('确定停止监控服务吗？管理后台也会一起关闭，需要时可再点「启动服务」。')) return;
+            const btn = document.getElementById('btnStop');
+            btn.disabled = true;
+            showToast('正在停止服务...');
+            try {
+                const res = await fetch(API + '/api/service/stop', { method: 'POST', headers: apiToken(), signal: AbortSignal.timeout(8000) });
+                const data = await res.json();
+                showToast((data && data.message) || '已发送停止指令');
+            } catch (error) {
+                showToast('停止失败：' + error.message);
+            } finally {
+                btn.disabled = false;
+                setTimeout(refreshStatus, 3000);
+            }
+        }
+
+        function openAdmin() {
+            window.open('http://127.0.0.1:3080', '_blank');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+
+        document.getElementById('adminToken').value = localStorage.getItem('taobao-monitor-token') || '';
+        document.getElementById('adminToken').addEventListener('change', function () {
+            localStorage.setItem('taobao-monitor-token', this.value.trim());
+        });
+
+        refreshStatus();
+        setInterval(refreshStatus, 5000);
+    </script>
+</body>
+</html>

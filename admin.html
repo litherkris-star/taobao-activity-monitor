@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>淘宝/天猫活动监控 - 网页管理</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #eef1f5; color: #333; font-size: 14px; }
+
+  /* ===== 布局 ===== */
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar { width: 224px; flex-shrink: 0; background: linear-gradient(180deg, #1e3a5f 0%, #15283f 100%); color: #fff; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+  .sidebar .brand { padding: 20px 20px 16px; border-bottom: 1px solid rgba(255,255,255,.1); }
+  .sidebar .brand h1 { font-size: 15px; font-weight: 600; letter-spacing: .5px; }
+  .sidebar .brand .sub { font-size: 11px; color: rgba(255,255,255,.45); margin-top: 4px; }
+  .nav { flex: 1; padding: 12px 0; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 12px 20px; color: rgba(255,255,255,.72); cursor: pointer; font-size: 13.5px; border-left: 3px solid transparent; transition: background .15s, color .15s; }
+  .nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .nav-item.active { background: rgba(255,255,255,.1); color: #fff; border-left-color: #4f9cf7; font-weight: 600; }
+  .nav-item .ico { width: 18px; text-align: center; font-size: 15px; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar { background: #fff; padding: 12px 24px; border-bottom: 1px solid #e3e8ef; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; position: sticky; top: 0; z-index: 5; }
+  .topbar .page-title { font-size: 16px; font-weight: 600; }
+  .topbar .spacer { flex: 1; }
+  .content { padding: 20px 24px 80px; max-width: 1700px; width: 100%; margin: 0 auto; }
+
+  /* ===== 通用组件 ===== */
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(20,40,80,.07); margin-bottom: 16px; }
+  .card-head { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid #f0f2f6; }
+  .card-head b { font-size: 14px; }
+  .card-body { padding: 14px 18px; }
+  .notice { background: #fff8e6; border: 1px solid #ffe1a1; color: #8a6d1a; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; line-height: 1.6; }
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .toolbar .sep { width: 1px; height: 22px; background: #dfe4ec; margin: 0 4px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+  .row:last-child { margin-bottom: 0; }
+  label.field { display: flex; flex-direction: column; font-size: 12px; color: #666; gap: 4px; flex: 1; min-width: 140px; }
+  label.field.wide { flex: 3; min-width: 260px; }
+  input[type=text], input[type=number], input[type=password], select, textarea { border: 1px solid #d5dae1; border-radius: 6px; padding: 7px 9px; font-size: 13px; width: 100%; background: #fff; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #4a7dbd; box-shadow: 0 0 0 3px rgba(74,125,189,.12); }
+  label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border-bottom: 1px solid #eef1f5; padding: 8px 6px; text-align: left; vertical-align: middle; }
+  th { background: #f7f9fc; color: #666; font-weight: 500; white-space: nowrap; }
+  tbody tr:hover { background: #fafbfe; }
+  td input, td select { min-width: 70px; }
+
+  button { border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer; transition: background .15s, box-shadow .15s; }
+  .btn-primary { background: #1f6fd6; color: #fff; }
+  .btn-primary:hover { background: #1a5cb5; }
+  .btn-plain { background: #eef2f7; color: #333; border: 1px solid transparent; }
+  .btn-plain:hover { background: #dde4ec; }
+  .btn-danger { background: #fdecec; color: #c0392b; }
+  .btn-danger:hover { background: #f9d6d3; }
+  .btn-mini { padding: 4px 10px; font-size: 12px; }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+  .badge { font-size: 12px; padding: 2px 10px; border-radius: 10px; display: inline-block; }
+  .badge-on { background: #e7f6ec; color: #1e8e3e; }
+  .badge-off { background: #fdecec; color: #c0392b; }
+  .status-ok { color: #1e8e3e; }
+  .status-alarm { color: #c0392b; font-weight: 600; }
+  pre.log { background: #14181f; color: #c8d3e0; padding: 14px; border-radius: 8px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 420px; white-space: pre-wrap; word-break: break-all; margin: 0; }
+
+  /* ===== 精简日志 ===== */
+  .log-list { max-height: 420px; overflow: auto; font-size: 12.5px; line-height: 1.8; }
+  /* 信息看板 */
+  .board-dates { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .board-date-active { background: #3370ff !important; color: #fff !important; }
+  .board-report { background: #fafbfd; border: 1px solid #e6ebf2; border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; max-height: 420px; overflow: auto; margin: 0; }
+  .log-item { display: flex; gap: 8px; align-items: baseline; padding: 3px 6px; border-radius: 4px; }
+  .log-item:hover { background: #f4f7fb; }
+  .log-item .lt { color: #999; white-space: nowrap; font-family: Consolas, monospace; }
+  .log-item .lvl { flex-shrink: 0; width: 52px; text-align: center; border-radius: 4px; font-size: 11px; font-weight: 600; padding: 1px 0; }
+  .lvl-INFO { background: #e8f2ff; color: #1f6fd6; }
+  .lvl-WARN { background: #fff4e0; color: #c77700; }
+  .lvl-ERROR { background: #fdecec; color: #c0392b; }
+  .lvl-ALARM { background: #fdecec; color: #c0392b; }
+  .log-item .shop-tag { flex-shrink: 0; border-radius: 4px; padding: 0 7px; font-size: 11px; white-space: nowrap; font-weight: 600; }
+  /* 相邻店铺用不同颜色区分（蓝/黄/绿循环，避开红色系） */
+  .shop-tag.c0 { color: #1a56db; background: #e3edfb; }
+  .shop-tag.c1 { color: #a16207; background: #fdf3d7; }
+  .shop-tag.c2 { color: #15803d; background: #e6f6ec; }
+  .shop-tag.c3 { color: #0f766e; background: #e0f2f1; }
+  .log-item .txt { word-break: break-all; }
+
+  /* ===== 操作日志 ===== */
+  .op-log-list { max-height: 260px; overflow: auto; font-size: 12.5px; }
+  .op-item { display: flex; gap: 10px; padding: 5px 6px; border-bottom: 1px dashed #edf0f4; align-items: baseline; flex-wrap: wrap; }
+  .op-item:last-child { border-bottom: none; }
+  .op-item .ot { color: #999; white-space: nowrap; font-family: Consolas, monospace; }
+  .op-item .oa { font-weight: 600; white-space: nowrap; }
+  .op-item .oo { background: #e8f1ff; color: #2f6fd6; font-weight: 600; padding: 1px 9px; border-radius: 10px; white-space: nowrap; font-size: 12px; }
+  .op-item .od { color: #666; word-break: break-all; }
+  .op-item .od .op-seg { margin: 2px 0; line-height: 1.55; display: flex; align-items: baseline; }
+  .op-item .od .op-shop { flex: 0 0 7.5em; font-weight: 600; white-space: nowrap; }
+  .op-item .od .op-act { flex: 0 0 5em; font-weight: 600; white-space: nowrap; }
+  .op-item .od .op-rest { flex: 1; word-break: break-all; }
+
+  /* ===== 按店铺分组结果 ===== */
+  .shop-group { margin-bottom: 12px; border: 1px solid #edf0f4; border-radius: 10px; overflow: hidden; background: #fff; }
+  .shop-group-head { display: flex; align-items: center; gap: 10px; padding: 11px 16px; cursor: pointer; user-select: none; background: #f8fafc; }
+  .shop-group-head:hover { background: #f1f5fa; }
+  .shop-group-head .arrow { transition: transform .15s; font-size: 11px; color: #888; }
+  .shop-group-head.collapsed .arrow { transform: rotate(-90deg); }
+  .shop-group-body { overflow: auto; }
+  .shop-group-body.collapsed { display: none; }
+  .shop-group-body table { table-layout: fixed; width: 100%; }
+  .shop-group-body th, .shop-group-body td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .shop-group-body th:nth-child(1), .shop-group-body td:nth-child(1) { width: 15%; }
+  .shop-group-body th:nth-child(2), .shop-group-body td:nth-child(2) { width: 30%; }
+  .shop-group-body th:nth-child(3), .shop-group-body td:nth-child(3) { width: 20%; }
+  .shop-group-body th:nth-child(4), .shop-group-body td:nth-child(4) { width: 10%; }
+  .shop-group-body th:nth-child(5), .shop-group-body td:nth-child(5) { width: 25%; }
+  .hidden { display: none !important; }
+  .muted { color: #999; font-size: 12px; }
+  .save-toast {
+    position: fixed; top: 76px; left: 50%; transform: translateX(-50%);
+    background: #16a34a; color: #fff; padding: 10px 22px; border-radius: 8px;
+    font-size: 14px; font-weight: 600; box-shadow: 0 6px 20px rgba(22,163,74,.35);
+    z-index: 999; display: none; align-items: center; gap: 8px;
+    opacity: 0; transition: opacity .3s ease, transform .3s ease;
+  }
+  .save-toast.show { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+  .save-toast.hide { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  .switch-box {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 13px; color: #333; user-select: none;
+  }
+  .switch-box input { width: 16px; height: 16px; accent-color: #16a34a; cursor: pointer; }
+  .switch-box:has(input:checked) span { color: #16a34a; font-weight: 600; }
+  .switch-box:has(input:not(:checked)) span { color: #aaa; }
+  .empty { text-align: center; color: #999; padding: 40px 0; }
+
+  /* ===== 店铺商品表 ===== */
+  .shop-table { table-layout: fixed; width: 100%; }
+  .shop-table th, .shop-table td { overflow: hidden; }
+  .shop-table td input, .shop-table td select { width: 100%; min-width: 0; }
+  .shop-table th { font-size: 12px; }
+  .shop-table td:last-child, .shop-table th:last-child { text-align: center; }
+
+  /* ===== 店铺卡片 ===== */
+  .shop-card { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(20,40,80,.07); margin-bottom: 18px; overflow: hidden; border: 1px solid #edf0f4; }
+  .shop-head { display: flex; align-items: center; gap: 10px; padding: 13px 18px; background: #f5f8fc; border-bottom: 1px solid #edf0f4; flex-wrap: wrap; cursor: pointer; user-select: none; }
+  .shop-head:hover { background: #eef3fa; }
+  .shop-head .arrow { color: #3370ff; font-size: 12px; margin-right: 2px; }
+  .shop-head .arrow.popped { color: #888; }
+  .shop-head .head-btn { margin-left: auto; }
+  .btn-detect { background: #16a34a; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 3px rgba(22,163,74,.35); }
+  .btn-detect:hover { background: #15803d; }
+  .shop-head strong { font-size: 15px; }
+  .shop-head .key { color: #888; font-size: 12px; }
+  .shop-body { padding: 16px 18px; }
+  /* 商品低频字段设置弹窗 */
+  .modal-mask { position: fixed; inset: 0; background: rgba(15,25,45,.42); display: flex; align-items: center; justify-content: center; z-index: 999; }
+  .modal { background: #fff; border-radius: 10px; padding: 20px 22px; width: 580px; max-width: 92vw; box-shadow: 0 10px 34px rgba(0,0,0,.18); }
+  .modal-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+  .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #666; }
+  .modal-grid input, .modal-grid select { padding: 7px 9px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; box-sizing: border-box; }
+  .modal-foot { margin-top: 16px; display: flex; justify-content: flex-end; gap: 10px; }
+
+  /* ===== 检测状态 ===== */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat-cell { background: #fff; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(20,40,80,.06); }
+  .stat-cell .k { font-size: 12px; color: #888; }
+  .stat-cell .v { font-size: 20px; font-weight: 600; margin-top: 4px; }
+  .stat-cell .v.green { color: #1e8e3e; }
+  .stat-cell .v.red { color: #c0392b; }
+
+  @media (max-width: 900px) {
+    .sidebar { width: 64px; }
+    .sidebar .brand h1, .sidebar .brand .sub, .sidebar .nav-item span:not(.ico) { display: none; }
+    .nav-item { justify-content: center; padding: 14px 0; }
+    .content { padding: 16px 14px 60px; }
+  }
+  /* 检测总览内容平铺，无需二级导航 */
+</style>
+</head>
+<body>
+<div class="layout">
+  <!-- 左侧导航 -->
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>淘宝/天猫活动监控</h1>
+      <div class="sub">多店铺异常巡检 · 管理后台</div>
+    </div>
+    <nav class="nav">
+      <div class="nav-item active" data-tab="status" onclick="switchTab('status')"><span class="ico">📊</span><span>检测总览</span></div>
+      <div class="nav-item" data-tab="shops" onclick="switchTab('shops')"><span class="ico">🏬</span><span>店铺与商品</span></div>
+      <div class="nav-item" data-tab="alerts" onclick="switchTab('alerts')"><span class="ico">🔔</span><span>报警设置</span></div>
+      <div class="nav-item" data-tab="board" onclick="switchTab('board')"><span class="ico">📋</span><span>信息看板</span></div>
+    </nav>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="main">
+    <div class="topbar">
+      <span class="page-title" id="pageTitle">检测总览</span>
+      <span id="saveState" class="muted" style="display:none"></span>
+      <span class="spacer"></span>
+      <select id="operatorInput" title="选择花名（操作人），操作日志会记录操作人；未选择花名不能保存修改" style="width:140px;padding:6px 10px;border:1px solid #d9dde3;border-radius:8px;font-size:13px;outline:none;background:#fff;" onchange="saveOperator()"><option value="" disabled selected hidden>请选择花名</option></select>
+      <button class="btn-primary" onclick="saveAll()">保存全部修改</button>
+      <button class="btn-plain" onclick="document.getElementById('fileInput').click()">导入Excel</button>
+      <button class="btn-plain" onclick="downloadTemplate()">下载导入模板</button>
+    </div>
+
+    <div class="content">
+      <!-- ========== 检测总览 ========== -->
+      <div id="pageStatus">
+        <div class="card">
+          <div class="card-head"><b>巡检控制</b></div>
+          <div class="card-body">
+            <div class="toolbar">
+              <button class="btn-primary" id="btnRunOnce" onclick="runOnce()">立即检测一次（全部店铺）</button>
+              <button class="btn-danger hidden" id="btnRunCancel" onclick="cancelRun()" title="中止正在运行的手动检测，不用等全部店铺跑完">取消检测</button>
+              <span class="sep"></span>
+              <button class="btn-danger" id="btnPauseToggle" onclick="togglePause()">停止自动检测</button>
+              <button class="btn-plain" onclick="loadResults()">刷新结果</button>
+              <span id="runState" class="muted"></span>
+            </div>
+          </div>
+        </div>
+        <div id="resultSummary"></div>
+        <div class="card">
+          <div class="card-head"><b>商品检测结果</b><span class="muted" id="resultGroupHint">按店铺分组，点击店铺名展开/收起</span></div>
+          <div class="card-body" id="resultTable"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <b>检测日志</b>
+            <span class="muted">已精简，点击「原始日志」查看完整内容</span>
+            <span style="margin-left:auto"></span>
+            <button class="btn-plain btn-mini" onclick="exportLog()" title="导出最近60分钟的检测日志到文件">导出最近一小时日志</button>
+            <button class="btn-plain btn-mini" id="btnLogToggle" onclick="toggleLogMode()">查看原始日志</button>
+          </div>
+          <div class="card-body"><div id="logLines" class="log-list">加载中...</div><pre class="log hidden" id="logTail">加载中...</pre></div>
+        </div>
+      </div>
+
+      <!-- ========== 信息看板（独立页：操作日志 + 服务状态 + 每日日报 + 检测趋势） ========== -->
+      <div id="pageBoard" class="hidden">
+        <div class="card">
+          <div class="card-head">
+            <b>操作日志</b>
+            <span class="muted" id="opCount">保存 / 导入 / 恢复网址等后台操作记录</span>
+            <input type="date" id="opDate" style="width:132px;padding:4px 8px;font-size:12px;" title="按日期筛选（留空=最近记录）" onchange="opDateFilter=this.value; opLoadLimit=50; loadOperations()">
+            <span style="margin-left:auto"></span>
+            <button class="btn-plain btn-mini" onclick="loadOperations()">刷新</button>
+          </div>
+          <div class="card-body">
+            <div id="opLogList" class="op-log-list">加载中...</div>
+            <div style="text-align:center;margin-top:8px;"><button class="btn-plain btn-mini hidden" id="opMore" onclick="opLoadLimit += 100; loadOperations()">加载更多</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><b>服务状态</b><span class="muted">服务自动恢复记录（守护脚本自动拉起，不再发钉钉）</span><span style="margin-left:auto"></span><button class="btn-plain btn-mini" onclick="loadBoard()">刷新</button></div>
+          <div class="card-body"><div id="boardEvents" class="log-list">加载中...</div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><b>每日日报</b><span class="muted" id="boardReportHint">点击日期查看当日简报</span></div>
+          <div class="card-body">
+            <div id="boardReportDates" class="board-dates"></div>
+            <pre id="boardReportDetail" class="board-report">（选择日期查看）</pre>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><b>检测趋势</b><span class="muted" id="trendHint">最近 48 轮检测的异常数 / 店铺失败数</span><span style="margin-left:auto"></span><button class="btn-plain btn-mini" onclick="loadHistory()">刷新</button></div>
+          <div class="card-body">
+            <div id="trendChart" style="width:100%;height:230px;"></div>
+            <div id="shopErrorChart" style="width:100%;height:190px;margin-top:6px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 店铺与商品 ========== -->
+      <div id="pageShops" class="hidden">
+        <div class="notice">修改后请点击右上角「保存全部修改」才会写入配置文件；正在运行的监控会在下一轮检测自动使用新配置。店铺名不要带【】括号。</div>
+        <div class="card">
+          <div class="card-head"><b>批量操作</b></div>
+          <div class="card-body">
+            <div class="toolbar">
+              <button class="btn-plain" onclick="addShop()">+ 添加店铺</button>
+              <span class="sep"></span>
+              <input type="text" id="globalActivityName" placeholder="活动名称（一键通用）" style="width:170px">
+              <button class="btn-plain" onclick="applyActivityNameAll()">活动名称应用到全部商品</button>
+              <span class="sep"></span>
+              <input type="text" id="globalActivityUrl" placeholder="店铺活动报名记录页URL（一键通用）" style="width:240px">
+              <button class="btn-plain" onclick="applyActivityUrlAll()" title="把同一个活动报名记录页URL一次填到全部店铺的「活动报名记录页URL」栏">活动URL应用到全部店铺</button>
+              <button class="btn-danger" onclick="restoreSuperDealUrls()" title="把全部店铺的活动报名记录页URL一键恢复为超级立减活动网址">恢复超级立减活动网址</button>
+              <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden" onchange="importExcel(this)">
+            </div>
+          </div>
+        </div>
+        <div id="shopList"></div>
+      </div>
+
+      <!-- ========== 报警设置 ========== -->
+      <div id="pageAlerts" class="hidden">
+        <div class="card">
+          <div class="card-head"><b>检测频率</b></div>
+          <div class="card-body">
+            <div class="row">
+              <label class="field" style="flex:0 0 200px;">检测间隔<span class="muted">自动检测多久跑一轮</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="number" id="intervalInput" min="1" max="1440" style="width:110px" title="自动检测的时间间隔，单位分钟，默认 30（每半小时一轮）">
+                  <span class="muted">分钟</span>
+                </div>
+              </label>
+              <label class="field" style="flex:0 0 200px;">重复提醒<span class="muted">同一异常持续期间的提醒间隔</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="number" id="repeatInput" min="0" max="1440" style="width:110px" title="同一异常持续期间的重复提醒间隔，单位分钟，默认 30；填 0 = 异常没恢复就每轮都提醒">
+                  <span class="muted">分钟</span>
+                </div>
+              </label>
+              <label class="field" style="flex:0 0 320px;">免打扰时段<span class="muted">静默期内商品异常不推钉钉（店铺故障仍推送）</span>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                  <input type="time" id="quietStart" style="width:110px" title="免打扰开始时间">
+                  <span class="muted">至</span>
+                  <input type="time" id="quietEnd" style="width:110px" title="免打扰结束时间，支持跨天（如 23:00 至 08:00）">
+                  <span class="muted">留空=不启用</span>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><b>自动任务</b><span class="muted">每日简报与定时重启（保存后立即生效）</span></div>
+          <div class="card-body">
+            <div class="row">
+              <label class="field" style="flex:0 0 320px;">每日检测简报<span class="muted">每天定时生成当日汇总到信息看板</span>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+                  <label class="switch-box"><input type="checkbox" id="reportEnabled"><span>启用</span></label>
+                  <input type="time" id="reportTime" style="width:120px" title="每日简报生成时间，默认 21:00">
+                  <label class="check" style="margin-left:4px;" title="开启后日报除写入信息看板外，同时推送到钉钉群"><input type="checkbox" id="reportDingEnabled"><span>同时推送钉钉</span></label>
+                </div>
+              </label>
+              <label class="field" style="flex:0 0 300px;">每日自动重启<span class="muted">低峰期重启监控释放内存</span>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+                  <label class="switch-box"><input type="checkbox" id="restartEnabled"><span>启用</span></label>
+                  <input type="time" id="restartTime" style="width:120px" title="自动重启时间，默认 04:00（重启后 45 分钟再跑检测，不打扰）">
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <b>负责人手机号映射</b>
+            <span class="muted" id="ownerPhonesSummary"></span>
+            <span style="margin-left:auto"></span>
+            <button class="btn-plain btn-mini" id="btnOwnerPhonesToggle" onclick="toggleOwnerPhones()">展开</button>
+          </div>
+          <div class="card-body hidden" id="ownerPhonesBody">
+            <div class="muted" style="margin-bottom:8px;">每行一条，格式：负责人=手机号（姓名必须和商品表里的「负责人」完全一致）。手机号只填 11 位数字即可，+86- 前缀、空格、横杠会自动去掉。钉钉要真正 @ 到本人必须用其绑定的手机号；同一人负责多个商品时只 @ 一次。没配手机号的负责人只会在消息里显示 @名字，不会真正提醒到本人。</div>
+            <textarea id="ownerPhonesInput" rows="3" style="width:100%;font-family:monospace;" placeholder="张三=13812345678&#10;李四=13987654321"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/echarts.min.js"></script>
+<script>
+let state = { shops: [], ownerPhones: {} };
+const PAGE_TITLES = { status: '检测总览', board: '信息看板', shops: '店铺与商品', alerts: '报警设置' };
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function api(path, options, retried) {
+  options = options || {};
+  options.headers = Object.assign({}, options.headers, {
+    'X-Admin-Token': encodeURIComponent(localStorage.getItem('adminToken') || ''),
+    'X-Operator': encodeURIComponent(localStorage.getItem('operatorName') || ''),
+  });
+  const res = await fetch(path, options);
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && data.needToken && !retried) {
+    const token = prompt('该管理后台已设置口令，请输入管理口令：');
+    if (token !== null) {
+      localStorage.setItem('adminToken', token.trim());
+      return api(path, options, true);
+    }
+  }
+  if (!res.ok) throw new Error(data.error || data.output || ('HTTP ' + res.status));
+  return data;
+}
+
+async function loadConfig() {
+  const data = await api('/api/config');
+  state.shops = data.shops || [];
+  state.ownerPhones = data.ownerPhones || {};
+  state.updatedAt = data.updatedAt || '';
+  document.getElementById('ownerPhonesInput').value = Object.entries(state.ownerPhones).map(([name, phone]) => `${name}=${phone}`).join('\n');
+  document.getElementById('intervalInput').value = data.intervalMinutes || 30;
+  document.getElementById('repeatInput').value = data.anomalyRepeatMinutes !== undefined ? data.anomalyRepeatMinutes : 30;
+  // 免打扰时段：拆分回填开始/结束两个时间选择框
+  const qhMatch = String(data.quietHours || '').match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
+  document.getElementById('quietStart').value = qhMatch ? qhMatch[1] : '';
+  document.getElementById('quietEnd').value = qhMatch ? qhMatch[2] : '';
+  document.getElementById('reportEnabled').checked = data.dailyReportEnabled !== false;
+  document.getElementById('reportTime').value = data.dailyReportTime || '21:00';
+  document.getElementById('reportDingEnabled').checked = data.dailyReportDingTalk === true;
+  document.getElementById('restartEnabled').checked = data.autoRestartEnabled !== false;
+  document.getElementById('restartTime').value = data.autoRestartTime || '04:00';
+  const phoneCount = Object.keys(state.ownerPhones).length;
+  document.getElementById('ownerPhonesSummary').textContent = phoneCount ? `已配置 ${phoneCount} 人` : '未配置';
+  renderShops();
+  initOperator();
+  if (!document.getElementById('pageStatus').classList.contains('hidden')) { loadResults(); refreshPauseButton(); }
+}
+
+// 手机号映射模块默认收起，点「展开/收起」切换编辑区。
+function toggleOwnerPhones() {
+  const body = document.getElementById('ownerPhonesBody');
+  const btn = document.getElementById('btnOwnerPhonesToggle');
+  const willShow = body.classList.contains('hidden');
+  body.classList.toggle('hidden');
+  btn.textContent = willShow ? '收起' : '展开';
+}
+
+// 解析负责人手机号映射文本（每行：姓名=手机号）。
+function parseOwnerPhonesInput() {
+  const text = document.getElementById('ownerPhonesInput').value;
+  const map = {};
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const sep = line.includes('=') ? '=' : (line.includes('：') ? '：' : (line.includes(':') ? ':' : ''));
+    if (!sep) throw new Error(`手机号映射格式不对（应为 姓名=手机号）：${line}`);
+    const name = line.slice(0, line.indexOf(sep)).trim();
+    const rawPhone = line.slice(line.indexOf(sep) + 1).trim();
+    let phone = rawPhone.replace(/\D/g, '');
+    if (phone.length === 13 && phone.startsWith('86')) phone = phone.slice(2);
+    if (!name || !/^\d{5,15}$/.test(phone)) throw new Error(`手机号映射格式不对（只需填 11 位手机号，如 姓名=13812345678）：${line}`);
+    map[name] = phone;
+  }
+  return map;
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const toast = document.getElementById('saveToast');
+  const msgEl = document.getElementById('saveToastMsg');
+  if (!toast) return;
+  msgEl.textContent = msg;
+  toast.classList.remove('hide');
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove('show');
+    toast.classList.add('hide');
+    setTimeout(() => toast.style.display = 'none', 300);
+  }, 3000);
+}
+
+// 检测趋势看板：最近 N 轮「活动异常数 / 店铺失败数」折线 + 各店铺累计失败次数柱状。
+let trendChartStore = {};
+async function loadHistory() {
+  const box = document.getElementById('trendChart');
+  if (!box) return;
+  try {
+    const data = await api('/api/history?limit=48');
+    const hist = data.history || [];
+    const hint = document.getElementById('trendHint');
+    if (hint) hint.textContent = `最近 ${hist.length} 轮检测的异常数 / 店铺失败数`;
+    if (!hist.length) {
+      box.innerHTML = '<span class="muted">暂无历史数据（下一轮检测后开始记录）</span>';
+      const box2 = document.getElementById('shopErrorChart');
+      if (box2) { box2.innerHTML = ''; if (trendChartStore.shopError) { trendChartStore.shopError.dispose(); trendChartStore.shopError = null; } }
+      return;
+    }
+    const times = hist.map((h) => String(h.time || '').slice(5, 16)); // MM-DD HH:MM
+    const anomalies = hist.map((h) => Number(h.anomalies) || 0);
+    const errors = hist.map((h) => Number(h.errors) || 0);
+    const shopErr = {};
+    (hist || []).forEach((h) => (h.shopErrorDetails || []).forEach((s) => {
+      const name = String(s).split(':')[0];
+      if (name) shopErr[name] = (shopErr[name] || 0) + 1;
+    }));
+    renderTrendChart('trendChart', ['活动异常数', '店铺失败数'], times, [anomalies, errors], false);
+    const shopNames = Object.keys(shopErr);
+    if (shopNames.length) {
+      renderTrendChart('shopErrorChart', ['店铺失败次数'], shopNames, [shopNames.map((n) => shopErr[n])], true);
+    } else if (trendChartStore.shopError) {
+      trendChartStore.shopError.dispose();
+      trendChartStore.shopError = null;
+      document.getElementById('shopErrorChart').innerHTML = '<span class="muted">近 48 轮无店铺失败</span>';
+    }
+  } catch (_) {}
+}
+
+function renderTrendChart(id, legend, xData, seriesData, isBar) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!window.echarts) { el.innerHTML = '<span class="muted">图表库未加载（vendor/echarts.min.js 缺失）</span>'; return; }
+  if (trendChartStore[id]) trendChartStore[id].dispose();
+  const chart = echarts.init(el);
+  trendChartStore[id] = chart;
+  chart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: legend, top: 0, textStyle: { fontSize: 11 } },
+    grid: { left: 42, right: 16, top: 30, bottom: 26 },
+    xAxis: { type: 'category', data: xData, axisLabel: { fontSize: 10, interval: Math.max(0, Math.floor(xData.length / 9)) } },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 10 } },
+    series: seriesData.map((data, i) => ({
+      name: legend[i],
+      type: isBar ? 'bar' : 'line',
+      data,
+      smooth: !isBar,
+      symbolSize: 5,
+      barMaxWidth: 26,
+      itemStyle: { color: isBar ? '#d48806' : (i === 0 ? '#d54941' : '#3370ff') },
+    })),
+  });
+}
+
+// 检测总览不再使用二级导航：巡检控制、商品结果、检测日志平铺同页显示，直接加载商品结果即可。
+// ===== 信息看板：服务自动恢复记录 + 每日日报（钉钉不再推送这两类，统一在后台查看） =====
+let boardReportCache = [];
+async function loadBoard() {
+  try {
+    const data = await api('/api/board');
+    renderBoardEvents(data.serviceEvents || []);
+    boardReportCache = data.dailyReports || [];
+    renderBoardDates();
+    if (boardReportCache.length) showBoardReport(0);
+  } catch (error) {
+    document.getElementById('boardEvents').innerHTML = `<div class="empty">加载失败：${esc(error.message)}</div>`;
+  }
+}
+function renderBoardEvents(events) {
+  const box = document.getElementById('boardEvents');
+  if (!events.length) {
+    box.innerHTML = '<div class="empty">暂无服务恢复记录（守护脚本运行正常，服务未中断过）</div>';
+    return;
+  }
+  box.innerHTML = events.slice().reverse().map((e) => `
+    <div class="log-item">
+      <span class="lt">${esc(e.time)}</span>
+      <span class="shop-tag c0">${esc(e.service)}</span>
+      <span class="txt">${esc(e.message)}</span>
+    </div>`).join('');
+}
+function renderBoardDates() {
+  const box = document.getElementById('boardReportDates');
+  if (!boardReportCache.length) {
+    box.innerHTML = '<span class="muted">（暂无日报，每天按配置时间自动生成）</span>';
+    document.getElementById('boardReportDetail').textContent = '（暂无日报）';
+    return;
+  }
+  box.innerHTML = boardReportCache.map((r, idx) => `<button class="btn-plain btn-mini${idx === 0 ? ' board-date-active' : ''}" id="bd-${idx}" onclick="showBoardReport(${idx})">${esc(r.date)}</button>`).join('');
+}
+function showBoardReport(idx) {
+  const r = boardReportCache[idx];
+  if (!r) return;
+  document.querySelectorAll('#boardReportDates .board-date-active').forEach((b) => b.classList.remove('board-date-active'));
+  const btn = document.getElementById('bd-' + idx);
+  if (btn) btn.classList.add('board-date-active');
+  document.getElementById('boardReportDetail').textContent = r.markdown || '（该日无内容）';
+  document.getElementById('boardReportHint').textContent = r.generatedAt ? '生成于 ' + r.generatedAt : '点击日期查看当日简报';
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('pageShops').classList.toggle('hidden', tab !== 'shops');
+  document.getElementById('pageStatus').classList.toggle('hidden', tab !== 'status');
+  document.getElementById('pageAlerts').classList.toggle('hidden', tab !== 'alerts');
+  document.getElementById('pageBoard').classList.toggle('hidden', tab !== 'board');
+  document.getElementById('pageTitle').textContent = PAGE_TITLES[tab] || '';
+  const saveState = document.getElementById('saveState');
+  saveState.style.display = tab === 'shops' ? '' : 'none';
+  if (tab === 'status') { loadResults(); refreshPauseButton(); }
+  // 信息看板页：一次性加载服务状态 + 日报 + 操作日志 + 检测趋势（各带自己的刷新按钮）
+  if (tab === 'board') { loadBoard(); loadOperations(); loadHistory(); }
+}
+
+function addShop() {
+  const key = 'shop' + String(state.shops.length + 1).padStart(2, '0') + '_' + Date.now().toString(36).slice(-4);
+  state.shops.push({ key, name: '', profileDir: '', activityUrl: '', account: '', password: '', hasPassword: false, chromeDebugPort: 0, enabled: true, verifyShopName: true, products: [] });
+  renderShops();
+}
+
+// 活动名称一键通用：同期大多是同一个活动，一次填到所有商品。
+function applyActivityNameAll() {
+  const name = document.getElementById('globalActivityName').value.trim();
+  if (!name) { alert('请先在输入框里填要通用的活动名称'); return; }
+  let count = 0;
+  state.shops.forEach((shop) => (shop.products || []).forEach((p) => { p.activityName = name; count += 1; }));
+  if (!count) { alert('还没有任何商品'); return; }
+  renderShops();
+  alert(`已把活动名称「${name}」应用到全部 ${count} 个商品，记得点「保存全部修改」。`);
+}
+
+// 活动页URL一键通用：只填到各店铺的「活动报名记录页 URL」栏（店铺层面），不写每个商品的单独链接。
+function applyActivityUrlAll() {
+  const url = document.getElementById('globalActivityUrl').value.trim();
+  if (!url) { alert('请先在输入框里填要通用的活动报名记录页URL'); return; }
+  if (!state.shops.length) { alert('还没有任何店铺'); return; }
+  state.shops.forEach((shop) => { shop.activityUrl = url; });
+  renderShops();
+  alert(`已把活动报名记录页URL应用到全部 ${state.shops.length} 个店铺，记得点「保存全部修改」。`);
+}
+
+// 一键恢复超级立减活动网址（单次确认）
+async function restoreSuperDealUrls() {
+  if (!state.shops.length) { alert('还没有任何店铺'); return; }
+
+  const shopCount = state.shops.length;
+  const ok = confirm(
+    '将把全部 ' + shopCount + ' 个店铺的「活动报名记录页URL」\n' +
+    '一键恢复为超级立减活动网址。\n\n' +
+    '（仅修改店铺的活动报名记录页URL，不影响商品监控数据）\n\n' +
+    '点击「确定」执行，点击「取消」放弃。'
+  );
+  if (!ok) return;
+
+  const btn = document.querySelector('button[onclick="restoreSuperDealUrls()"]');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await api('/api/restore-super-deal-urls', { method: 'POST', body: '{}' });
+    if (res && res.ok) {
+      alert('✅ ' + (res.message || '恢复完成'));
+      await loadConfig();
+    } else {
+      alert('❌ 恢复失败：' + ((res && res.error) || '未知错误'));
+    }
+  } catch (err) {
+    alert('❌ 恢复失败：' + (err.message || err));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// 只应用到某个店铺的全部商品。
+function applyActivityNameToShop(i) {
+  const shop = state.shops[i];
+  if (!shop.products.length) { alert('该店铺还没有商品'); return; }
+  const current = ((shop.products.find((p) => p.activityName) || {}).activityName) || '';
+  const name = prompt('输入要应用到本店全部商品的活动名称：', current);
+  if (name === null) return;
+  const trimmed = name.trim();
+  shop.products.forEach((p) => { p.activityName = trimmed; });
+  renderShops();
+}
+
+function addProduct(i) {
+  state.shops[i].products.push({
+    productId: '', productName: '', activityName: '', activityUrl: '', activityDeadline: '', owner: '', monitorMode: 'added_time', monitorSince: '',
+    monitorActivityKeywords: '', recoveryActivityKeywords: '', recoveryGraceMinutes: 0,
+    expectedPrice: 0, minStock: 0, priceTolerance: 0.01, enabled: true,
+  });
+  renderShops();
+}
+
+function removeProduct(btn, i, j) {
+  const p = state.shops[i].products[j] || {};
+  // 第一次点击：进入确认状态（按钮变实心红，3秒内再次点击才删除）
+  if (!btn.dataset.arm) {
+    btn.dataset.arm = '1';
+    btn.textContent = '确认删除？';
+    btn.style.background = '#c0392b';
+    btn.style.color = '#fff';
+    btn.style.fontWeight = 'bold';
+    setTimeout(() => {
+      if (btn && btn.isConnected) {
+        btn.dataset.arm = '';
+        btn.textContent = '删除';
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.fontWeight = '';
+      }
+    }, 3000);
+    return;
+  }
+  // 第二次点击：真正删除
+  if (!confirm(`确定删除这条监控链接？\n商品ID：${p.productId || '未填写'}\n活动名称：${p.activityName || '未填写'}\n删除后点「保存全部修改」生效，该商品将不再检测。`)) return;
+  state.shops[i].products.splice(j, 1);
+  document.getElementById('saveState').textContent = '有未保存的修改';
+  renderShops();
+}
+
+function onField(input) {
+  const i = Number(input.dataset.shop);
+  const j = input.dataset.product === undefined ? -1 : Number(input.dataset.product);
+  const field = input.dataset.field;
+  const value = input.type === 'checkbox' ? input.checked : input.value;
+  if (j >= 0) state.shops[i].products[j][field] = value;
+  else state.shops[i][field] = value;
+  document.getElementById('saveState').textContent = '有未保存的修改';
+}
+
+function field(labelText, html, wide) {
+  return `<label class="field${wide ? ' wide' : ''}">${labelText}${html}</label>`;
+}
+
+// 展开/收起状态（页面内保留，刷新后重置为收起）
+const expandedShops = new Set();
+
+function toggleShop(i) {
+  const body = document.getElementById('shopBody-' + i);
+  if (!body) return;
+  const nowHidden = body.classList.toggle('hidden');
+  if (nowHidden) expandedShops.delete(i); else expandedShops.add(i);
+  const arrow = document.getElementById('shopArrow-' + i);
+  if (arrow) { arrow.textContent = nowHidden ? '▸' : '▾'; arrow.classList.toggle('popped', nowHidden); }
+}
+
+// 商品低频字段（活动页URL/截止时间/监控开始时间/监控模式）用弹窗编辑，保持表格简洁。
+let editingDetail = null; // { i, j }
+function editProductDetail(i, j) {
+  const p = (state.shops[i] && state.shops[i].products[j]) || {};
+  editingDetail = { i, j };
+  document.getElementById('mdTitle').textContent = `商品设置：${p.productName || p.productId || '(未填写名称)'}`;
+  document.getElementById('mdActivityUrl').value = p.activityUrl || '';
+  document.getElementById('mdDeadline').value = p.activityDeadline || '';
+  document.getElementById('mdMonitorSince').value = p.monitorSince || '';
+  document.getElementById('mdMonitorMode').value = p.monitorMode === 'signup_date' ? 'signup_date' : 'added_time';
+  document.getElementById('productDetailModal').classList.remove('hidden');
+}
+function saveProductDetail() {
+  if (!editingDetail) return;
+  const p = state.shops[editingDetail.i].products[editingDetail.j];
+  p.activityUrl = document.getElementById('mdActivityUrl').value;
+  p.activityDeadline = document.getElementById('mdDeadline').value;
+  p.monitorSince = document.getElementById('mdMonitorSince').value;
+  p.monitorMode = document.getElementById('mdMonitorMode').value;
+  document.getElementById('saveState').textContent = '有未保存的修改';
+  document.getElementById('productDetailModal').classList.add('hidden');
+  editingDetail = null;
+}
+function closeProductDetail() {
+  document.getElementById('productDetailModal').classList.add('hidden');
+  editingDetail = null;
+}
+
+function renderShops() {
+  const box = document.getElementById('shopList');
+  if (!state.shops.length) {
+    box.innerHTML = '<div class="empty">还没有店铺，点击上方「+ 添加店铺」开始。</div>';
+    return;
+  }
+  box.innerHTML = state.shops.map((shop, i) => {
+    const bodyOpen = expandedShops.has(i);
+    const products = shop.products || [];
+    return `
+    <div class="shop-card">
+      <div class="shop-head" onclick="toggleShop(${i})" title="点击展开/收起">
+        <span class="arrow${bodyOpen ? '' : ' popped'}" id="shopArrow-${i}">${bodyOpen ? '▾' : '▸'}</span>
+        <strong>${esc(shop.name) || '(未命名店铺)'}</strong>
+        <span class="key">编号：${esc(shop.key)}</span>
+        <span class="badge ${shop.enabled ? 'badge-on' : 'badge-off'}">${shop.enabled ? '已启用' : '已停用'}</span>
+        <span class="muted">商品 ${products.length} 个</span>
+        <button class="btn-detect head-btn" onclick="event.stopPropagation(); runShopDetect('${esc(shop.key)}', this)" title="只检测本店铺，不影响其他店铺">检测此店铺</button>
+      </div>
+      <div class="shop-body${bodyOpen ? '' : ' hidden'}" id="shopBody-${i}">
+        <div class="row">
+          ${field('店铺编号（字母数字，保存后不要改）', `<input type="text" data-shop="${i}" data-field="key" value="${esc(shop.key)}" oninput="onField(this)">`)}
+          ${field('店铺名称（与后台显示一致，不带【】）', `<input type="text" data-shop="${i}" data-field="name" value="${esc(shop.name)}" oninput="onField(this)">`)}
+          ${field('活动报名记录页 URL', `<input type="text" data-shop="${i}" data-field="activityUrl" value="${esc(shop.activityUrl)}" placeholder="https://..." oninput="onField(this)">`, true)}
+          ${field('登录 profile 目录（cdp 模式留空）', `<input type="text" data-shop="${i}" data-field="profileDir" value="${esc(shop.profileDir)}" oninput="onField(this)">`)}
+        </div>
+        <div class="row">
+          ${field('登录账号（掉线自动重登用，可选）', `<input type="text" data-shop="${i}" data-field="account" value="${esc(shop.account || '')}" placeholder="淘宝/天猫账号" oninput="onField(this)">`)}
+          ${field('登录密码（留空=保持不变）', `<input type="password" data-shop="${i}" data-field="password" value="" placeholder="${shop.hasPassword ? '已设置，留空保持不变' : '未设置'}" oninput="onField(this)">`)}
+          ${field('调试端口（多店铺各不同，0=自动）', `<input type="number" data-shop="${i}" data-field="chromeDebugPort" value="${shop.chromeDebugPort || 0}" min="0" max="65535" oninput="onField(this)">`)}
+        </div>
+        <div class="row">
+          <label class="check"><input type="checkbox" data-shop="${i}" data-field="enabled" ${shop.enabled ? 'checked' : ''} onchange="onField(this)"> 启用该店铺</label>
+          <label class="check"><input type="checkbox" data-shop="${i}" data-field="verifyShopName" ${shop.verifyShopName !== false ? 'checked' : ''} onchange="onField(this)"> 校验店铺名（防串店）</label>
+        </div>
+        <table class="shop-table">
+          <colgroup>
+            <col style="width:16%"><col style="width:18%"><col style="width:26%"><col style="width:22%"><col style="width:12%"><col style="width:6%">
+          </colgroup>
+          <thead><tr>
+            <th>操作</th><th>商品ID</th><th>商品标题</th><th>活动名称</th><th>负责人</th><th>启用</th>
+          </tr></thead>
+          <tbody>
+            ${products.map((p, j) => `
+              <tr>
+                <td>
+                  <button class="btn-plain btn-mini" onclick="editProductDetail(${i},${j})" title="设置活动页URL、截止时间、监控开始时间、监控模式">设置</button>
+                  <button class="btn-danger btn-mini" onclick="removeProduct(this,${i},${j})" title="点击一次进入确认状态，再次点击才真正删除">删除</button>
+                </td>
+                <td><input type="text" data-shop="${i}" data-product="${j}" data-field="productId" value="${esc(p.productId)}" oninput="onField(this)"></td>
+                <td><input type="text" data-shop="${i}" data-product="${j}" data-field="productName" value="${esc(p.productName)}" oninput="onField(this)"></td>
+                <td><input type="text" data-shop="${i}" data-product="${j}" data-field="activityName" value="${esc(p.activityName)}" placeholder="如：天猫新势力周" oninput="onField(this)"></td>
+                <td><input type="text" data-shop="${i}" data-product="${j}" data-field="owner" value="${esc(p.owner)}" oninput="onField(this)"></td>
+                <td style="text-align:center"><input type="checkbox" data-shop="${i}" data-product="${j}" data-field="enabled" ${p.enabled !== false ? 'checked' : ''} onchange="onField(this)"></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        <div class="row" style="margin-top:10px;margin-bottom:0;">
+          <button class="btn-plain btn-mini" onclick="addProduct(${i})">+ 添加商品</button>
+          <button class="btn-plain btn-mini" onclick="applyActivityNameToShop(${i})" title="把同一个活动名称一次填到本店全部商品">活动名称本店通用</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// 下载导入模板：必须带管理口令请求头（window.open 直接跳转带不上，会被口令拦截返回 JSON 错误页）。
+async function downloadTemplate() {
+  try {
+    const res = await fetch('/api/template', {
+      headers: { 'X-Admin-Token': encodeURIComponent(localStorage.getItem('adminToken') || '') },
+    });
+    if (res.status === 401) {
+      const token = prompt('该管理后台已设置口令，请输入管理口令：');
+      if (token === null) return;
+      localStorage.setItem('adminToken', token.trim());
+      return downloadTemplate();
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || ('HTTP ' + res.status));
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '商品导入模板.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (error) {
+    alert('模板下载失败：' + error.message);
+  }
+}
+
+async function importExcel(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  const el = document.getElementById('saveState');
+  el.textContent = '正在导入 ' + file.name + ' ...';
+  el.style.display = '';
+  try {
+    const data = await api('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    let text = `导入完成：新增店铺 ${data.shopsAdded} 个，新增商品 ${data.productsAdded} 个，更新商品 ${data.productsUpdated} 个。`;
+    if (data.errors && data.errors.length) text += '\n\n以下行被跳过：\n' + data.errors.join('\n');
+    alert(text);
+    el.textContent = '';
+    el.style.display = 'none';
+    showToast('导入成功 ' + new Date().toLocaleTimeString('zh-CN'));
+    await loadConfig();
+  } catch (error) {
+    el.textContent = '';
+    alert('导入失败：' + error.message);
+  }
+}
+
+async function saveAll() {
+  // 必须先选择花名（操作人）才能保存：保证操作日志可追溯。
+  const opValue = document.getElementById('operatorInput').value;
+  if (!opValue) {
+    showToast('⚠️ 请先选择花名（操作人），选择后才能保存修改。');
+    return;
+  }
+  localStorage.setItem('operatorName', opValue);
+  const el = document.getElementById('saveState');
+  el.textContent = '';
+  el.style.display = 'none';
+  showToast('正在保存...');
+  try {
+    const ownerPhones = parseOwnerPhonesInput();
+    // 本地校验：店铺内商品 ID 唯一（重复会干扰检测去重、条数统计与异常标记），先拦截再提交。
+    const dupReports = [];
+    for (const shop of state.shops) {
+      const seen = new Set();
+      const dups = new Set();
+      for (const p of (shop.products || [])) {
+        const id = String(p.productId || '').trim();
+        if (!id) continue;
+        if (seen.has(id)) dups.add(id); else seen.add(id);
+      }
+      if (dups.size) dupReports.push(`${shop.name || shop.key}：${[...dups].join('、')}`);
+    }
+    if (dupReports.length) {
+      showToast('❌ 店铺内商品 ID 重复，未保存：' + dupReports.join('；') + '。请先删除重复行再保存。');
+      return;
+    }
+    const intervalMinutes = Math.max(1, Math.min(1440, parseInt(document.getElementById('intervalInput').value, 10) || 30));
+    const repeatRaw = parseInt(document.getElementById('repeatInput').value, 10);
+    const anomalyRepeatMinutes = Number.isNaN(repeatRaw) ? 30 : Math.max(0, Math.min(1440, repeatRaw));
+    // 免打扰时段：开始/结束都要选或都留空；拼成 "HH:MM-HH:MM" 提交（后端格式不变）
+    const quietStart = document.getElementById('quietStart').value;
+    const quietEnd = document.getElementById('quietEnd').value;
+    if ((quietStart && !quietEnd) || (!quietStart && quietEnd)) {
+      showToast('⚠️ 免打扰时段的开始和结束时间都要选择，或都留空（不启用）。');
+      return;
+    }
+    const quietHours = (quietStart && quietEnd) ? quietStart + '-' + quietEnd : '';
+    const res = await api('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shops: state.shops, ownerPhones, intervalMinutes, anomalyRepeatMinutes,
+        quietHours,
+        dailyReportEnabled: document.getElementById('reportEnabled').checked,
+        dailyReportTime: document.getElementById('reportTime').value || '21:00',
+        dailyReportDingTalk: document.getElementById('reportDingEnabled').checked,
+        autoRestartEnabled: document.getElementById('restartEnabled').checked,
+        autoRestartTime: document.getElementById('restartTime').value || '04:00',
+        baseUpdatedAt: state.updatedAt,
+      }),
+    });
+    el.textContent = '';
+    el.style.display = 'none';
+    if (res && res.unchanged) {
+      showToast('配置无任何修改，未重复保存。');
+      return;
+    }
+    // 计划任务同步结果只提示失败项（成功结果与日志一致，不显示，避免每次保存都重复“日报/重启 已启用”）。
+    const schedFailures = (res && res.scheduleResult || []).filter((r) => /失败|格式不对/.test(r));
+    const sched = schedFailures.length ? '；自动任务：' + schedFailures.join('、') : '';
+    showToast('已保存 ' + new Date().toLocaleTimeString('zh-CN') + sched);
+    await loadConfig();
+  } catch (error) {
+    el.textContent = '';
+    el.style.display = 'none';
+    if (/其他人修改|冲突/.test(error.message)) {
+      alert(error.message);
+      await loadConfig();
+    } else {
+      alert('保存失败：' + error.message);
+    }
+  }
+}
+
+async function runOnce() {
+  const shopCount = (state.shops || []).length;
+  if (!confirm(`确定立即检测全部 ${shopCount} 个店铺吗？\n\n提示：每次全量检测都会重新登录店铺，频繁触发可能增加风控概率（登录态失效）。平时让定时（${document.getElementById('intervalInput').value || 30} 分钟）自动检测即可。`)) return;
+  const btn = document.getElementById('btnRunOnce');
+  const cancelBtn = document.getElementById('btnRunCancel');
+  const el = document.getElementById('runState');
+  btn.disabled = true;
+  cancelBtn.classList.remove('hidden');
+  el.textContent = '检测中，通常需要几分钟；点「取消检测」可随时中止...';
+  try {
+    const res = await api('/api/run-once', { method: 'POST' });
+    el.textContent = '检测完成';
+    if (res && res.concurrent && res.monitorHint) {
+      el.textContent = '检测完成（注意：自动巡检进程也在运行，并发时结果以最后写入为准）';
+      setTimeout(() => { el.textContent = '检测完成'; }, 15000);
+    }
+  } catch (error) {
+    el.textContent = /取消/.test(error.message) ? '检测已取消' : '检测结束（有错误，见下方日志）';
+  } finally {
+    btn.disabled = false;
+    cancelBtn.classList.add('hidden');
+    loadResults();
+  }
+}
+
+// 中止正在运行的手动检测（误点「立即检测一次」时用）。
+async function cancelRun() {
+  const btn = document.getElementById('btnRunCancel');
+  btn.disabled = true;
+  try {
+    const res = await api('/api/run-cancel', { method: 'POST' });
+    document.getElementById('runState').textContent = res.ok ? '正在取消...' : '当前没有正在运行的手动检测';
+  } catch (error) {
+    alert('取消失败：' + error.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// 只检测指定店铺（店铺卡片上的「检测此店铺」按钮）。
+async function runShopDetect(shopKey, btn) {
+  if (!confirm(`确定只检测店铺「${shopKey}」吗？其他店铺本轮不受影响。`)) return;
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '检测中...';
+  try {
+    const res = await api('/api/run-shop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopKey }) });
+    alert(res && res.concurrent && res.monitorHint ? '检测完成。注意：自动巡检进程也在运行，两个进程并发时 Chrome 标签页与结果文件可能互相影响，以最后写入的结果为准。' : '检测完成，请到「检测结果」页查看。');
+  } catch (error) {
+    alert('检测结束（有错误）：' + error.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+}
+
+// 停止/恢复自动检测。
+async function refreshPauseButton() {
+  try {
+    const data = await api('/api/monitor-state');
+    const btn = document.getElementById('btnPauseToggle');
+    btn.textContent = data.paused ? '恢复自动检测' : '停止自动检测';
+    btn.className = data.paused ? 'btn-primary' : 'btn-danger';
+    btn.title = data.paused ? '当前已暂停，点击恢复按间隔自动巡检' : '暂停按间隔的自动巡检（手动「立即检测」不受影响）';
+  } catch (_) {}
+}
+
+async function togglePause() {
+  const btn = document.getElementById('btnPauseToggle');
+  const pausing = btn.textContent.indexOf('停止') >= 0;
+  if (pausing && !confirm('确定停止自动检测吗？停止后不再按间隔巡检，直到点「恢复自动检测」。')) return;
+  btn.disabled = true;
+  try {
+    const data = await api('/api/monitor-state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused: pausing }) });
+    alert(data.paused ? '已停止自动检测（监控程序仍在运行，只是暂停巡检）。' : '已恢复自动检测。');
+  } catch (error) {
+    alert('操作失败：' + error.message);
+  } finally {
+    btn.disabled = false;
+    refreshPauseButton();
+  }
+}
+
+// 记录日志查看模式（true=原始 / false=精简）
+let logModeRaw = false;
+
+function toggleLogMode() {
+  logModeRaw = !logModeRaw;
+  const btn = document.getElementById('btnLogToggle');
+  btn.textContent = logModeRaw ? '查看精简日志' : '查看原始日志';
+  document.getElementById('logLines').classList.toggle('hidden', logModeRaw);
+  document.getElementById('logTail').classList.toggle('hidden', !logModeRaw);
+}
+
+// 导出最近一小时检测日志
+async function exportLog() {
+  try {
+    const res = await fetch('/api/export-log?minutes=60', {
+      headers: { 'X-Admin-Token': encodeURIComponent(localStorage.getItem('adminToken') || '') },
+    });
+    if (res.status === 401) {
+      const token = prompt('该管理后台已设置口令，请输入管理口令：');
+      if (token === null) return;
+      localStorage.setItem('adminToken', token.trim());
+      return exportLog();
+    }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + '_' + pad(now.getHours()) + '-' + pad(now.getMinutes());
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '监控日志-最近30分钟-' + stamp + '.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (error) {
+    alert('导出失败：' + error.message);
+  }
+}
+
+// 渲染精简日志（分级着色 + 店铺标签 + 截断JSON）
+let logAtBottom = true; // 用户是否停留在列表底部（新日志自动跟随；上滑查看历史时暂停跟随）
+function renderLogLines(lines) {
+  const box = document.getElementById('logLines');
+  if (!box._logScrollBound) {
+    box._logScrollBound = true;
+    box.addEventListener('scroll', () => {
+      logAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+    });
+  }
+  if (!lines || !lines.length) { box.innerHTML = '<div class="empty">（暂无日志）</div>'; return; }
+  // 按出现顺序给店铺分配颜色，相邻不同店铺用不同色（蓝/黄/绿/青循环）
+  const shopColor = {};
+  let colorIdx = 0;
+  const colorFor = (name) => {
+    if (!(name in shopColor)) { shopColor[name] = 'c' + (colorIdx % 4); colorIdx++; }
+    return shopColor[name];
+  };
+  box.innerHTML = lines.map((l) => `
+    <div class="log-item">
+      <span class="lt">${esc(l.time)}</span>
+      <span class="lvl lvl-${esc(l.level)}">${esc(l.level)}</span>
+      ${l.shop ? `<span class="shop-tag ${colorFor(l.shop)}">${esc(l.shop)}</span>` : ''}
+      <span class="txt">${esc(l.text)}</span>
+    </div>`).join('');
+  // 停留在底部时自动滚到最新日志，不用手动下滑
+  if (logAtBottom) box.scrollTop = box.scrollHeight;
+}
+
+// 渲染操作日志
+// 操作类型 → 颜色（操作日志美观配色）
+const OP_COLORS = {
+  '保存配置': '#1e8e3e',
+  '导入配置': '#0f8f6f',
+  '恢复超级立减网址': '#b7791f',
+};
+// 店铺调色板：按店铺出现顺序分配颜色（同一店铺颜色稳定，不同店铺不重复）
+const SHOP_PALETTE = ['#3370ff', '#00a870', '#722ed1', '#d48806', '#eb2f96', '#13c2c2', '#fa8c16', '#2f54eb', '#a0d911', '#531dab'];
+const shopColorMap = new Map();
+let shopColorCursor = 0;
+function shopColor(name) {
+  if (!shopColorMap.has(name)) {
+    shopColorMap.set(name, SHOP_PALETTE[shopColorCursor % SHOP_PALETTE.length]);
+    shopColorCursor++;
+  }
+  return shopColorMap.get(name);
+}
+// 商品/店铺操作动词 → 颜色
+const ACT_COLORS = { '新增商品': '#00a870', '删除商品': '#d54941', '修改商品': '#d48806', '新增店铺': '#00a870', '删除店铺': '#d54941', '修改店铺': '#d48806' };
+// 片段渲染：店铺名 / 操作动词 / 剩余内容 三列布局，上下行对齐
+function colorizeSeg(p) {
+  if (!p.shop && !p.act) return `<div class="op-seg">${esc(p.seg)}</div>`;
+  let rest = p.seg;
+  if (p.shop) rest = rest.replace(p.shop, '');
+  if (p.act) rest = rest.replace(p.act, '');
+  rest = rest.trim();
+  const shopHtml = p.shop ? `<span class="op-shop" style="color:${shopColor(p.shop)}">${esc(p.shop)}</span>` : '<span class="op-shop"></span>';
+  const actHtml = (p.act && ACT_COLORS[p.act]) ? `<span class="op-act" style="color:${ACT_COLORS[p.act]}">${esc(p.act)}</span>` : `<span class="op-act">${esc(p.act)}</span>`;
+  return `<div class="op-seg">${shopHtml}${actHtml}<span class="op-rest">${esc(rest)}</span></div>`;
+}
+// 详情按「；」拆行：店铺名着色 + 操作动词着色；同一店铺连续多条操作只显示一次店铺名
+function renderDetailLines(detail) {
+  if (!detail) return '';
+  const parts = String(detail).split(/[；;]/).map((s) => s.trim()).filter(Boolean).map((seg) => {
+    const shopMatch = seg.match(/([\u4e00-\u9fa5A-Za-z0-9]+?(?:旗舰店|专营店|专卖店))/);
+    const actMatch = seg.match(/(新增商品|删除商品|修改商品|新增店铺|删除店铺|修改店铺)/);
+    return { seg, shop: shopMatch ? shopMatch[1] : '', act: actMatch ? actMatch[1] : '' };
+  });
+  const out = [];
+  let prevShop = '';
+  for (const p of parts) {
+    if (p.shop && p.shop === prevShop && p.seg.startsWith(p.shop)) {
+      // 同一店铺的后续操作：省略店铺名，店铺列留空占位以对齐
+      out.push(colorizeSeg({ seg: p.seg.slice(p.shop.length).trim(), shop: '', act: p.act }));
+    } else {
+      out.push(colorizeSeg(p));
+      prevShop = p.shop;
+    }
+  }
+  return out.join('');
+}
+function renderOperations(ops) {
+  const box = document.getElementById('opLogList');
+  if (!ops || !ops.length) { box.innerHTML = '<div class="empty">暂无操作记录</div>'; return; }
+  box.innerHTML = ops.map((line) => {
+    // 新格式：[时间] [花名] 操作 - 详情；旧格式：[时间] 操作 - 详情 或 时间 操作 详情
+    let m = line.match(/^\[([^\]]+)\]\s*(?:\[([^\]]+)\])?\s*([^\s]+)(?:\s*-\s*(.*))?$/);
+    let opName = '', detail = '', operator = '', time = '';
+    if (m) {
+      time = m[1]; operator = m[2] || ''; opName = m[3] || ''; detail = m[4] || '';
+    } else {
+      const m2 = line.match(/^\[?(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2} \d{1,2}:\d{2}:\d{2})\]?\s+([^\s]+)(?:\s+(.*))?$/);
+      if (m2) { time = m2[1]; opName = m2[2] || ''; detail = m2[3] || ''; m = [null]; }
+    }
+    if (!m) return `<div class="op-item"><span class="od">${esc(line)}</span></div>`;
+    const color = OP_COLORS[opName] || '#1f6fd6';
+    const opTag = operator ? `<span class="oo">${esc(operator)}</span>` : '';
+    return `<div class="op-item"><span class="ot">${esc(time)}</span>${opTag}<span class="oa" style="color:${color}">${esc(opName)}</span><span class="od">${renderDetailLines(detail)}</span></div>`;
+  }).join('');
+}
+
+let opLoadLimit = 50;
+let opDateFilter = '';
+async function loadOperations() {
+  try {
+    const qs = '?limit=' + opLoadLimit + (opDateFilter ? '&date=' + encodeURIComponent(opDateFilter) : '');
+    const data = await api('/api/operations' + qs);
+    const ops = data.operations || [];
+    renderOperations(ops);
+    const moreBtn = document.getElementById('opMore');
+    if (moreBtn) moreBtn.classList.toggle('hidden', ops.length < opLoadLimit);
+    const countEl = document.getElementById('opCount');
+    if (countEl) countEl.textContent = opDateFilter ? `共 ${ops.length} 条（${opDateFilter}）` : `共 ${ops.length} 条（最近）`;
+  } catch (_) {}
+}
+
+// 按店铺分组渲染检测结果，可折叠
+// 按店铺分组渲染检测结果，可折叠；异常店铺默认展开、正常店铺收起；异常商品置顶
+function renderResultGroups(results) {
+  const box = document.getElementById('resultTable');
+  const rows = results.results || [];
+  if (!rows.length) { box.innerHTML = '<div class="empty">本轮没有商品检测结果（可能店铺异常，见日志）。</div>'; return; }
+  const byShop = {};
+  const shopMeta = {};
+  (results.shops || []).forEach((s) => { shopMeta[s.key] = s; });
+  rows.forEach((r) => {
+    const key = r.shopKey || r.shopName || '未知';
+    if (!byShop[key]) byShop[key] = { name: r.shopName || key, items: [] };
+    byShop[key].items.push(r);
+  });
+  box.innerHTML = Object.values(byShop).map((group) => {
+    const meta = shopMeta[group.items[0].shopKey] || {};
+    const anomalyCount = group.items.filter((r) => r.isAnomaly || r.error).length;
+    const badge = anomalyCount ? '<span class="badge badge-off">异常 ' + anomalyCount + '</span>' : '<span class="badge badge-on">正常</span>';
+    // 异常商品排在最前
+    const sorted = group.items.slice().sort((a, b) => {
+      const aa = (a.isAnomaly || a.error) ? 0 : 1;
+      const bb = (b.isAnomaly || b.error) ? 0 : 1;
+      return aa - bb;
+    });
+    // 有异常（商品或店铺错误）默认展开，正常店铺默认收起
+    const defaultCollapsed = (anomalyCount === 0 && !meta.error) ? ' collapsed' : '';
+    return `
+      <div class="shop-group">
+        <div class="shop-group-head${defaultCollapsed}" onclick="toggleShopGroup(this)">
+          <span class="arrow">▼</span>
+          <strong>${esc(group.name)}</strong>
+          ${meta.error ? `<span class="badge badge-off" title="${esc(meta.error)}">店铺异常</span>` : ''}
+          ${badge}
+          <span class="muted">商品 ${group.items.length} 条</span>
+        </div>
+        <div class="shop-group-body${defaultCollapsed}">
+          <table>
+            <thead><tr><th>商品ID</th><th>商品标题</th><th>活动名称</th><th>负责人</th><th>状态</th></tr></thead>
+            <tbody>
+              ${sorted.map((r) => `
+                <tr${(r.isAnomaly || r.error) ? ' style="background:#fdf1f1;"' : ''}>
+                  <td>${esc(r.productId)}</td>
+                  <td>${esc(r.productName)}</td>
+                  <td>${esc(r.activityName || r.activityTitle || '')}</td>
+                  <td>${esc(r.owner)}</td>
+                  <td class="${r.isAnomaly ? 'status-alarm' : (r.error ? 'status-alarm' : 'status-ok')}">${esc(r.statusText || r.error || '')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// 点击店铺分组头：展开/收起
+function toggleShopGroup(head) {
+  head.classList.toggle('collapsed');
+  const body = head.nextElementSibling;
+  if (body) body.classList.toggle('collapsed');
+}
+
+async function loadResults() {
+  try {
+    const data = await api('/api/results');
+    // 精简日志
+    renderLogLines(data.logLines || []);
+    document.getElementById('logTail').textContent = data.logTail || '（暂无日志）';
+    // 操作日志由「信息看板」页的 /api/operations 独立加载，此处不再重复拉取。
+    const results = data.results;
+    if (!results) {
+      document.getElementById('resultSummary').innerHTML = '<div class="empty">还没有检测记录，点击「立即检测一次」。</div>';
+      document.getElementById('resultTable').innerHTML = '';
+      return;
+    }
+    const shops = results.shops || [];
+    const shopErrors = shops.filter((s) => s.error);
+    const okCount = shops.filter((s) => !s.error).length;
+    const summaryHtml = `
+      <div class="stat-grid">
+        <div class="stat-cell"><div class="k">最近检测时间</div><div class="v" style="font-size:15px;font-weight:500;">${esc(results.time || '')}</div></div>
+        <div class="stat-cell"><div class="k">店铺总数</div><div class="v">${shops.length}</div></div>
+        <div class="stat-cell"><div class="k">正常</div><div class="v green">${okCount}</div></div>
+        <div class="stat-cell"><div class="k">异常</div><div class="v red">${shopErrors.length}</div></div>
+      </div>
+      ${shopErrors.length ? `<div style="margin-bottom:14px;padding:12px 16px;background:#fdecec;border-radius:8px;font-size:12px;line-height:1.8;color:#c0392b;">${shopErrors.map((s) => `<div><b>${esc(s.name)}</b>：${esc(s.error)}</div>`).join('')}</div>` : ''}`;
+    document.getElementById('resultSummary').innerHTML = summaryHtml;
+    renderResultGroups(results);
+  } catch (error) {
+    document.getElementById('resultSummary').innerHTML = `<div class="empty">加载失败：${esc(error.message)}</div>`;
+  }
+}
+
+// 花名（操作人）：下拉选项来自商品负责人 + 负责人手机号映射；选择后保存到本地，操作日志记录操作人。
+function saveOperator() {
+  const el = document.getElementById('operatorInput');
+  const v = el.value || '';
+  localStorage.setItem('operatorName', v);
+  if (v) showToast('花名已设置：' + v);
+}
+function initOperator() {
+  const el = document.getElementById('operatorInput');
+  const saved = localStorage.getItem('operatorName') || '';
+  const owners = new Set();
+  (state.shops || []).forEach((shop) => (shop.products || []).forEach((p) => { if (String(p.owner || '').trim()) owners.add(String(p.owner).trim()); }));
+  Object.keys(state.ownerPhones || {}).forEach((name) => { if (name.trim()) owners.add(name.trim()); });
+  el.innerHTML = '<option value="" disabled selected hidden>请选择花名</option>' + [...owners].map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
+  if (saved && owners.has(saved)) el.value = saved;
+  localStorage.setItem('operatorName', el.value || '');
+}
+
+// 默认进入检测总览
+// 注意：花名下拉由 loadConfig 成功后的 initOperator() 初始化（提前初始化会因店铺还没加载而清空已保存的花名）。
+loadConfig().catch((error) => alert('加载配置失败：' + error.message));
+</script>
+  <!-- 商品低频字段设置弹窗 -->
+  <div id="productDetailModal" class="modal-mask hidden">
+    <div class="modal">
+      <div class="modal-title" id="mdTitle">商品设置</div>
+      <div class="modal-grid">
+        <label>活动页URL（留空用店铺默认）
+          <input id="mdActivityUrl" placeholder="多活动时填该活动报名记录页地址">
+        </label>
+        <label>活动截止时间（过后停止报警）
+          <input id="mdDeadline" placeholder="如 2026-09-10" title="只写日期按当天23:59截止；留空表示一直监控">
+        </label>
+        <label>监控开始时间
+          <input id="mdMonitorSince" placeholder="2026-08-01 00:00:00">
+        </label>
+        <label>监控模式
+          <select id="mdMonitorMode">
+            <option value="added_time">加入名单后</option>
+            <option value="signup_date">按报名时间</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-plain btn-mini" onclick="closeProductDetail()">取消</button>
+        <button class="btn-primary btn-mini" onclick="saveProductDetail()">保存</button>
+      </div>
+    </div>
+  </div>
+  <div id="saveToast" class="save-toast"><span>✅</span><span id="saveToastMsg"></span></div>
+</body>
+</html>

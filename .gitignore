@@ -1,0 +1,11 @@
+# 运行时与第三方文件不入版本库
+node_modules/
+chrome-profile-*/
+profiles/
+logs/
+data/
+vendor/
+*.log
+*.old.log
+tmp-*.vbs
+商品导入模板.xlsx

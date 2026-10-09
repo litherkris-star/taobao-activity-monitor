@@ -1,0 +1,67 @@
+{
+  "activityUrl": "https://myseller.taobao.com/home.htm",
+  "dingtalk": {
+    "webhook": "",
+    "secret": "",
+    "atAll": false,
+    "atMobiles": []
+  },
+  "intervalMinutes": 30,
+  "headless": true,
+  "browserMode": "builtin",
+  "chromeDebugPort": 9222,
+  "adminHost": "127.0.0.1",
+  "adminToken": "",
+  "notifyOnError": true,
+  "notifyProductRecovery": false,
+  "notifyShopRecovery": false,
+  "errorAlertCooldownMinutes": 180,
+  "anomalyRepeatMinutes": 30,
+  "ownerPhones": {
+    "张三": "13800000000"
+  },
+  "queryTimeoutSeconds": 30,
+  "emptyConfirmSeconds": 8,
+  "transientRetryAttempts": 2,
+  "transientRetryDelaySeconds": 3,
+  "autoRelogin": true,
+  "reloginChallengeWaitSeconds": 100,
+  "offlineWords": ["活动下线", "清退"],
+  "successWords": ["报名成功", "审核通过"],
+  "ongoingWords": ["报名进行中", "进行中", "活动中"],
+  "draftWords": ["草稿", "待完善", "待提交", "未提交", "待编辑", "待补充"],
+  "statusWhitelistMode": true,
+  "normalStatusWords": ["已发布设定", "报名成功", "审核通过", "报名进行中", "活动中"],
+  "shops": [
+    {
+      "key": "shop01",
+      "name": "示例旗舰店",
+      "profileDir": "/home/admin/tb-monitor/profiles/shop01",
+      "activityUrl": "https://myseller.taobao.com/home.htm",
+      "account": "",
+      "password": "",
+      "chromeDebugPort": 0,
+      "enabled": true,
+      "verifyShopName": true,
+      "products": [
+        {
+          "productId": "1234567890",
+          "productName": "示例商品",
+          "activityName": "天猫新势力周",
+          "activityUrl": "",
+          "activityDeadline": "",
+          "owner": "张三",
+          "monitorMode": "added_time",
+          "monitorSince": "2026-08-01 00:00:00",
+          "monitorActivityKeywords": "",
+          "recoveryActivityKeywords": "",
+          "recoveryGraceMinutes": 0,
+          "expectedPrice": 99,
+          "minStock": 100,
+          "priceTolerance": 0.01,
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
