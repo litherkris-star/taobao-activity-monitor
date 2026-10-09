@@ -573,9 +573,15 @@ async function scanAnomalyTab(page) {
     for (let w = 0; w < 10000; w += 500) {
       await page.waitForTimeout(500);
       const now = await firstRowId();
-      if (now !== beforeFirst) { listChanged = true; break; }
+      // 点击前有行：首行变化才算切换成功；点击前无行（列表还没渲染出来）：
+      // 出现首行也算切换成功，避免“点击前首行 无行”把页面加载慢误报成切换失败。
+      if (now && (beforeFirst === null || now !== beforeFirst)) { listChanged = true; break; }
     }
-    if (!listChanged) scanError = `点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst || '无行'}）。`;
+    if (!listChanged) {
+      scanError = beforeFirst === null
+        ? `点击「异常」tab 后商品列表未渲染（10 秒内无商品行），页面可能未加载完整。`
+        : `点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst}）。`;
+    }
   }
   await page.waitForTimeout(1500); // 列表渲染稳定
 
@@ -999,7 +1005,7 @@ async function runShopAttempt(config, shop) {
     // 「异常 tab 一个都没渲染出来」（现有：为空）说明活动页没加载出来（只渲染了后台外壳/被跳转），
     // 属偶发瞬时问题，归入 transientError 让 runShop 自动重开浏览器重试；有 tab 但没有[异常]tab 则不重试
     // （那可能是页面结构变化，重试无意义，避免死循环）。
-    const transient = isTransientBrowserError(error) || /页面未找到「异常」tab（现有：）/.test(error.message || '');
+    const transient = isTransientBrowserError(error) || /页面未找到「异常」tab（现有：）/.test(error.message || '') || /商品列表未渲染/.test(error.message || '');
     return { results, error: error.message || String(error), detectedShopNames: [], transientError: transient };
   } finally {
     if (config.browserMode === 'cdp') {
