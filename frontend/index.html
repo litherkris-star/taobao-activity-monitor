@@ -192,6 +192,33 @@
 
 <script src="assets/echarts.min.js"></script>
 <script src="assets/app.js"></script>
-<div id="saveToast" class="save-toast"><span>✅</span><span id="saveToastMsg"></span></div>
+  <!-- 商品低频字段设置弹窗 -->
+  <div id="productDetailModal" class="modal-mask hidden">
+    <div class="modal">
+      <div class="modal-title" id="mdTitle">商品设置</div>
+      <div class="modal-grid">
+        <label>活动页URL（留空用店铺默认）
+          <input id="mdActivityUrl" placeholder="多活动时填该活动报名记录页地址">
+        </label>
+        <label>活动截止时间（过后停止报警）
+          <input id="mdDeadline" placeholder="如 2026-09-10" title="只写日期按当天23:59截止；留空表示一直监控">
+        </label>
+        <label>监控开始时间
+          <input id="mdMonitorSince" placeholder="2026-08-01 00:00:00">
+        </label>
+        <label>监控模式
+          <select id="mdMonitorMode">
+            <option value="added_time">加入名单后</option>
+            <option value="signup_date">按报名时间</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-plain btn-mini" onclick="closeProductDetail()">取消</button>
+        <button class="btn-primary btn-mini" onclick="saveProductDetail()">保存</button>
+      </div>
+    </div>
+  </div>
+  <div id="saveToast" class="save-toast"><span>✅</span><span id="saveToastMsg"></span></div>
 </body>
 </html>
