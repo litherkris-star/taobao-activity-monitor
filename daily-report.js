@@ -39,6 +39,8 @@ async function main() {
   let recoveryCount = 0;              // 商品恢复个数
   let loginFailCount = 0;             // 登录失败次数（直接登录失败/登录状态已失效）
   const shopFail = {};                // 各店铺失败次数（ERROR [店铺名]）
+  const shopFailReasons = {};         // 各店铺失败原因（去重，最多保留 3 条）
+  const alertProducts = [];           // 报警商品明细：店铺/ID(名称)[类型]
   const shopRun = {};                 // 各店铺开始检测次数
   const serviceRecovered = [];        // 服务自动恢复
 
@@ -49,6 +51,15 @@ async function main() {
       alertCount += 1;
       const m = line.match(/报警发送成功：(\d+) 个商品活动异常/);
       if (m) alertProductSum += Number(m[1]);
+      // 明细格式（monitor.js alertDetailLog）：店铺/ID(名称)[类型]、店铺/ID…
+      const detail = line.match(/报警发送成功：\d+ 个商品活动异常。商品：(.+)$/);
+      if (detail) {
+        detail[1].split('、').filter(Boolean).forEach((part) => {
+          const p = part.match(/^(.+?)\/(\d+)\(([^)]*)\)(?:\[(.+)\])?$/);
+          if (p) alertProducts.push({ shop: p[1], productId: p[2], name: p[3], type: p[4] || '' });
+          else alertProducts.push({ shop: '', productId: part, name: '', type: '' });
+        });
+      }
     } else if (line.includes('商品已恢复正常')) {
       const m = line.match(/商品已恢复正常（[^）]*）：(.+)/);
       if (m) recoveryCount += (m[1] || '').split('、').filter(Boolean).length;
@@ -59,14 +70,33 @@ async function main() {
       if (m) serviceRecovered.push(m[1]);
     }
     const shopMatch = line.match(/\[ERROR\] \[(.+?)\]/);
-    if (shopMatch) shopFail[shopMatch[1]] = (shopFail[shopMatch[1]] || 0) + 1;
+    if (shopMatch) {
+      const name = shopMatch[1];
+      shopFail[name] = (shopFail[name] || 0) + 1;
+      // 提取失败原因：ERROR 行里「Error: xxx」或直接跟的错误描述，去掉堆栈噪点。
+      const reasonMatch = line.match(/\[ERROR\] \[.+?\]\s*(?:Error:\s*)?(.{5,200}?)(?:\.\s*at |$)/);
+      if (reasonMatch) {
+        const reason = reasonMatch[1].trim();
+        if (reason) {
+          const list = shopFailReasons[name] || [];
+          if (!list.includes(reason) && list.length < 3) list.push(reason);
+          shopFailReasons[name] = list;
+        }
+      }
+    }
     const runMatch = line.match(/\[INFO\] \[(.+?)\] 开始检测 \d+ 个商品/);
     if (runMatch) shopRun[runMatch[1]] = (shopRun[runMatch[1]] || 0) + 1;
   }
 
   const failLines = Object.entries(shopFail)
     .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => `- ${name}：失败 ${count} 次`)
+    .map(([name, count]) => {
+      const reasons = (shopFailReasons[name] || []).map((r) => r.replace(/[。；;]\s*$/, ''));
+      return `- ${name}：失败 ${count} 次${reasons.length ? `，原因：${reasons.join('；')}` : ''}`;
+    })
+    .join('\n') || '无';
+  const alertProductLines = alertProducts
+    .map((p) => `- ${p.shop} ${p.productId}（${p.name || '未填名称'}）${p.type ? `：${p.type}` : ''}`)
     .join('\n') || '无';
   const runLines = Object.entries(shopRun)
     .sort((a, b) => a[0].localeCompare(b[0], 'zh'))
@@ -80,6 +110,7 @@ async function main() {
     const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
     if (Number(cfg.intervalMinutes) > 0) intervalMinutes = Number(cfg.intervalMinutes);
   } catch (_) {}
+  const shopFailTotal = Object.values(shopFail).reduce((a, b) => a + b, 0);
   const markdown = [
     `### 淘宝活动监控日报（${dateLabel}）`,
     ``,
@@ -87,10 +118,13 @@ async function main() {
     `**商品活动异常报警**：${alertCount} 次 / 累计 ${alertProductSum} 个商品`,
     `**商品恢复正常**：${recoveryCount} 个`,
     `**登录失败（风控拦截）**：${loginFailCount} 次`,
-    `**店铺检测失败**：${Object.values(shopFail).reduce((a, b) => a + b, 0)} 家次`,
+    `**店铺检测失败**：${shopFailTotal} 次`,
     ``,
     `**各店铺失败明细**：`,
     `${failLines}`,
+    ``,
+    `**今日异常商品**：`,
+    `${alertProductLines}`,
     ``,
     `**各店铺检测轮数**：${runLines}`,
     serviceRecovered.length ? `\n**服务自动恢复**：${serviceRecovered.join('、')}` : '',
@@ -101,6 +135,7 @@ async function main() {
   console.log(`恢复个数: ${recoveryCount}`);
   console.log(`登录失败: ${loginFailCount}`);
   console.log(`店铺失败: ${JSON.stringify(shopFail)}`);
+  console.log(`报警商品: ${JSON.stringify(alertProducts)}`);
 
   // 写入信息看板文件（按日期覆盖，同一天重复运行只保留最新一份；保留最近 30 天）
   const entry = {
@@ -114,6 +149,8 @@ async function main() {
     loginFailCount,
     shopFailCount: Object.values(shopFail).reduce((a, b) => a + b, 0),
     shopFail,
+    shopFailReasons,
+    alertProducts,
     serviceRecovered,
   };
   let reports = {};

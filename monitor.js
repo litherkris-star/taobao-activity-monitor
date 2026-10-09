@@ -331,6 +331,17 @@ function anomalyDetailLines(item) {
   return lines;
 }
 
+// 报警明细日志：把本次报警的商品压缩成一行（店铺/ID(名称)[异常类型]），供日报与事后排查直接提取。
+// 最多列 20 个，超出以“…等 N 个”收尾，避免单行日志过长。
+function alertDetailLog(items) {
+  const parts = (items || []).slice(0, 20).map((item) => {
+    const typeText = Array.isArray(item.anomalies) ? item.anomalies.map(anomalyLabel).join('/') : '';
+    return `${item.shopName || item.shopKey || '未知店铺'}/${item.productId}(${item.productName || '未填名称'})${typeText ? `[${typeText}]` : ''}`;
+  });
+  if (items.length > 20) parts.push(`…等 ${items.length} 个`);
+  return `商品：${parts.join('、')}`;
+}
+
 function buildAnomalyMessage(items) {
   const lines = ['#### 【淘宝/天猫商品活动异常报警】', '', `检测时间：${localNow()}`, `异常数量：${items.length}`, ''];
   items.slice(0, 30).forEach((item, index) => {
@@ -1215,7 +1226,7 @@ async function runCycle(onlyShopKey) {
             const mentionParts = ownersToAt.map((name) => (config.ownerPhones[name] ? `@${config.ownerPhones[name]}` : `@${name}`));
             await sendNotification(config, `【活动异常提醒】请负责人处理：${mentionParts.join(' ')}`, { atMobiles: atPhones });
           }
-          await log('alarm', `${channels.join('、')}报警发送成功：${toAlert.length} 个商品活动异常。`);
+          await log('alarm', `${channels.join('、')}报警发送成功：${toAlert.length} 个商品活动异常。${alertDetailLog(toAlert)}`);
         } catch (notifyError) {
           await log('error', `钉钉报警发送失败（检测结果不受影响，继续保存）：${notifyError.message || notifyError}`);
         }
