@@ -1483,5 +1483,5 @@
   "autoRestartEnabled": true,
   "autoRestartTime": "04:00",
   "dailyReportDingTalk": false,
-  "quietHours": "00:00-06:00"
+  "quietHours": "01:00-06:00"
 }
