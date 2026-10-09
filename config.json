@@ -76,7 +76,7 @@
           "activityDeadline": "",
           "owner": "松柏",
           "monitorMode": "added_time",
-          "monitorSince": "2026-08-01 00:00:00",
+          "monitorSince": "",
           "monitorActivityKeywords": "",
           "recoveryActivityKeywords": "",
           "recoveryGraceMinutes": 0,
@@ -1483,5 +1483,5 @@
   "autoRestartEnabled": true,
   "autoRestartTime": "04:00",
   "dailyReportDingTalk": false,
-  "quietHours": "01:00-06:00"
+  "quietHours": ""
 }
