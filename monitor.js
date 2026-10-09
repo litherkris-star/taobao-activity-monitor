@@ -511,18 +511,62 @@ function cleanProfileCache(profileDir) {
 async function scanAnomalyTab(page) {
   const anomalyIds = new Set();
   let scanError = '';
-  const tab = await page.evaluate(() => {
-    const inners = Array.from(document.querySelectorAll('.next-tabs-tab-inner'));
-    const t = inners.find((el) => (el.innerText || '').replace(/\s+/g, '').startsWith('异常'));
-    if (!t) return { exists: false, tabs: inners.map((e) => (e.innerText || '').trim()) };
-    const label = (t.innerText || '').replace(/\s+/g, '');
+  // 页面异步渲染：状态筛选条（含「异常(N)」）偶尔晚于分类 tab 出现（如创庭 15:15 现场），
+  // 轮询等待「异常」tab 出现，最多 15 秒，避免误报“找不到异常tab”。
+  const findAnomalyTab = () => page.evaluate(() => {
+    const norm = (el) => (el.innerText || '').replace(/\s+/g, '');
+    // 收集所有 tab 候选：Fusion next-tabs + 常见 tab 角色/类名。注意创庭等店铺的「异常(1)」状态筛选条
+    // 不在 .next-tabs-tab-inner 下，只查该选择器会漏掉独立「异常」tab 导致误报“找不到异常tab”。
+    const seen = new Set();
+    const candidates = [];
+    for (const sel of ['.next-tabs-tab-inner', '.next-tabs-tab', '[role="tab"]', '[class*="tab"]']) {
+      for (const el of document.querySelectorAll(sel)) {
+        const t = norm(el);
+        if (!t || t.length > 30 || seen.has(el)) continue;
+        seen.add(el);
+        candidates.push({ el, t });
+      }
+    }
+    // 优先「异常」开头的 tab（如「异常(33)」「异常(1)」）；兜底包含「异常」但排除分类 tab（如「风险和异常商品」，
+    // 那是商品分类视图，不是异常状态筛选）。
+    const t = (candidates.find((c) => c.t.startsWith('异常')) || candidates.find((c) => c.t.includes('异常') && !c.t.includes('商品')) || {}).el;
+    if (!t) return { exists: false, tabs: candidates.map((c) => c.t) };
+    const label = norm(t);
     const m = label.match(/[（(](\d+)[）)]/);
-    t.click();
-    return { exists: true, count: m ? Number(m[1]) : null };
+    const wasActive = t.getAttribute('aria-selected') === 'true' || /active|current|selected/i.test(t.className);
+    if (!wasActive) t.click();
+    return { exists: true, count: m ? Number(m[1]) : null, label, wasActive };
   });
-  if (!tab.exists) return { anomalyIds, error: `页面未找到「异常」tab（现有：${(tab.tabs || []).join('/')}）` };
+  let tab = null;
+  let lastTabs = [];
+  for (let w = 0; w < 15000 && !tab; w += 1000) {
+    tab = await findAnomalyTab();
+    if (!tab) lastTabs = (await page.evaluate(() => {
+      const norm = (el) => (el.innerText || '').replace(/\s+/g, '');
+      return Array.from(document.querySelectorAll('.next-tabs-tab-inner')).map(norm);
+    }).catch(() => []));
+    if (!tab) await page.waitForTimeout(1000);
+  }
+  if (!tab) return { anomalyIds, error: `页面未找到「异常」tab（现有：${(lastTabs || []).join('/')}）` };
   if (tab.count === 0) return { anomalyIds, declaredCount: 0 };
-  await page.waitForTimeout(6000);
+  // 点击后等待列表真正切换：记录点击前首行商品ID，轮询到首行变化为止（最多 10 秒）。
+  // 背景：14:12 创庭曾“抓到 10 个（页面标注 1）”——点击异常 tab 后列表未切换，抓到的是默认列表第一页。
+  const firstRowId = () => page.evaluate(() => {
+    const tr = document.querySelector('tr.next-table-row');
+    const m = tr && (tr.innerText || '').match(/商品ID\s*(\d{10,13})/);
+    return m ? m[1] : null;
+  }).catch(() => null);
+  const beforeFirst = await firstRowId();
+  if (!tab.wasActive) {
+    let listChanged = false;
+    for (let w = 0; w < 10000; w += 500) {
+      await page.waitForTimeout(500);
+      const now = await firstRowId();
+      if (now !== beforeFirst) { listChanged = true; break; }
+    }
+    if (!listChanged) scanError = `点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst || '无行'}）。`;
+  }
+  await page.waitForTimeout(1500); // 列表渲染稳定
 
   for (let pageIndex = 0; pageIndex < 200; pageIndex += 1) {
     const rowIds = await page.evaluate(() => {
