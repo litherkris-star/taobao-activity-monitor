@@ -355,6 +355,24 @@
           "priceTolerance": 0.01,
           "enabled": true,
           "shopName": "蔻丝旗舰店"
+        },
+        {
+          "productId": "1072183012351",
+          "productName": "A265-白色痛柜",
+          "activityName": "10月超级88",
+          "activityUrl": "",
+          "activityDeadline": "",
+          "owner": "松柏",
+          "monitorMode": "added_time",
+          "monitorSince": "",
+          "monitorActivityKeywords": "",
+          "recoveryActivityKeywords": "",
+          "recoveryGraceMinutes": 0,
+          "expectedPrice": 0,
+          "minStock": 0,
+          "priceTolerance": 0.01,
+          "enabled": true,
+          "shopName": "蔻丝旗舰店"
         }
       ]
     },
