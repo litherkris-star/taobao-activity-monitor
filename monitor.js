@@ -769,7 +769,7 @@ async function saveErrorScreenshot(page, shopKey) {
     const safe = String(shopKey || 'shop').replace(/[^a-zA-Z0-9_-]/g, '_');
     const name = `error-${safe}-${Date.now()}.png`;
     await page.screenshot({ path: path.join(LOG_DIR, name), fullPage: false });
-    await log('info', `已保存错误截图：logs/${name}`);
+    await log('info', `已保存错误截图：${path.join(LOG_DIR, name)}`);
   } catch (_) {}
 }
 
