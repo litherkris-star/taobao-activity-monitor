@@ -8,4 +8,5 @@ vendor/
 *.log
 *.old.log
 tmp-*.vbs
+config.json.backup-*
 商品导入模板.xlsx
