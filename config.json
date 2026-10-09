@@ -638,6 +638,24 @@
           "priceTolerance": 0.01,
           "enabled": true,
           "shopName": "收纳达人旗舰店"
+        },
+        {
+          "productId": "961967950016",
+          "productName": "C14-黑2格酒架",
+          "activityName": "10月超级88",
+          "activityUrl": "",
+          "activityDeadline": "",
+          "owner": "松柏",
+          "monitorMode": "added_time",
+          "monitorSince": "",
+          "monitorActivityKeywords": "",
+          "recoveryActivityKeywords": "",
+          "recoveryGraceMinutes": 0,
+          "expectedPrice": 0,
+          "minStock": 0,
+          "priceTolerance": 0.01,
+          "enabled": true,
+          "shopName": "收纳达人旗舰店"
         }
       ]
     },
