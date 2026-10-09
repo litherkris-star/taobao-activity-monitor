@@ -684,6 +684,8 @@ const server = http.createServer(async (req, res) => {
         ownerPhones: config.ownerPhones && typeof config.ownerPhones === 'object' ? config.ownerPhones : {},
         dailyReportEnabled: config.dailyReportEnabled !== false,
         dailyReportTime: String(config.dailyReportTime || '').trim() || '21:00',
+        dailyReportDingTalk: config.dailyReportDingTalk === true,
+        quietHours: String(config.quietHours || '').trim(),
         autoRestartEnabled: config.autoRestartEnabled !== false,
         autoRestartTime: String(config.autoRestartTime || '').trim() || '04:00',
         updatedAt: configVersion(),
