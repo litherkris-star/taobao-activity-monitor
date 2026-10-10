@@ -1,8 +1,0 @@
-正在打开活动页...
-=== 当前 URL ===
-https://loginmyseller.taobao.com/?from=taobaoindex&f=top&style=&sub=true&redirect_url=https%3A%2F%2Fmyseller.taobao.com%2Fhome.htm%2Fstarb%2Ftmc-next%2Fsale%2Fseller%2Fcampaign%2Fitem.htm%3FcampaignId%3D49595%26signRecordId%3D3496203280%26unitedActivityId%3D49601
-=== 页面是否在登录页 ===
-是(在登录页)
-=== .next-tabs-tab-inner ===
-=== [role=tab] ===
-=== 含「异常」的元素 ===
