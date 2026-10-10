@@ -1453,10 +1453,15 @@ process.on('SIGTERM', () => { stopRequested = true; });
 process.on('SIGINT', () => { stopRequested = true; });
 
 // 支持 node monitor.js --once --shop=<店铺编号> 只检测单个店铺（网页管理端「检测此店铺」按钮用）。
+// --once 也要输出本轮耗时，与 daemon 轮的「本轮检测耗时 X 秒」保持一致，避免手动检测看不到耗时。
 if (process.argv.includes('--once')) {
   const shopArg = process.argv.find((arg) => arg.startsWith('--shop='));
   const onlyShopKey = shopArg ? String(shopArg.slice('--shop='.length)).trim() : '';
-  runCycle(onlyShopKey || undefined).then(() => process.exit(0)).catch(() => process.exit(1));
+  const startAt = Date.now();
+  runCycle(onlyShopKey || undefined)
+    .then(() => log('info', `手动检测完成，本轮检测耗时 ${Math.round((Date.now() - startAt) / 1000)} 秒。`))
+    .then(() => process.exit(0))
+    .catch((error) => { log('error', (error && error.stack) || String(error)); process.exit(1); });
 } else {
   daemon().catch(async (error) => { await log('error', error.stack || String(error)); process.exit(1); });
 }
