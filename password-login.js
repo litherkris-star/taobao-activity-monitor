@@ -128,7 +128,9 @@ async function fillAndSubmit(page, account, password, log) {
   const switched = await clickTextInFrames(page, ['密码登录', '帐号密码登录', '账号密码登录']);
   if (switched) {
     await log('info', '已切换到密码登录标签。');
-    await sleep(1500);
+    // 点击后不必固定等 1.5 秒：waitForPasswordInput 会轮询等待密码框出现（最长 12 秒），
+    // 只做极短等待避免表单切换未完成时的首查必然失败。
+    await sleep(500);
   }
 
   // 2. 等密码输入框出现（页面/iframe 渲染需要时间，轮询最长 12 秒）。
@@ -218,7 +220,9 @@ async function attemptPasswordLogin(page, shop, log, options = {}) {
     const snap0 = await pageSnapshot(page);
     if (!isLoginUrl(snap0.url)) {
       await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
-      await sleep(3000);
+      // 登录页 SPA 渲染需要时间，但不必固定等满 3 秒：fillAndSubmit 内部 waitForPasswordInput
+      // 会轮询等待密码输入框出现（最长 12 秒），这里只做基础等待即可。
+      await sleep(1500);
     }
 
     let fillResult = await fillAndSubmit(page, account, password, log);
@@ -237,8 +241,12 @@ async function attemptPasswordLogin(page, shop, log, options = {}) {
       const snap = await pageSnapshot(page);
       if (isBackend(snap.url, snap.bodyText) || (!isLoginUrl(snap.url) && !hasChallenge(snap.bodyText))) {
         await log('info', '密码登录成功，已进入后台。');
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
-        await sleep(3000);
+        // headless 自动检测（manualAssist=false）：不再在这里跳活动页——runShopAttempt 会统一 goto 分组 URL，
+        // 避免同一活动页跳两次（这里跳一次+3s，主流程再跳一次+6s）。人工辅助模式（shop-login.js）保留跳转供查看登录态。
+        if (manualAssist) {
+          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+          await sleep(3000);
+        }
         return { ok: true, reason: '' };
       }
       if (hasChallenge(snap.bodyText)) { challenged = true; break; }
@@ -252,8 +260,10 @@ async function attemptPasswordLogin(page, shop, log, options = {}) {
         const snap = await pageSnapshot(page);
         if (isBackend(snap.url, snap.bodyText) || (!isLoginUrl(snap.url) && !hasChallenge(snap.bodyText))) {
           await log('info', '人工验证完成，登录成功。');
-          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
-          await sleep(3000);
+          if (manualAssist) {
+            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(() => {});
+            await sleep(3000);
+          }
           return { ok: true, reason: '' };
         }
       }

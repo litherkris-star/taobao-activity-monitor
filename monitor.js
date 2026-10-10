@@ -992,7 +992,9 @@ async function runShopAttempt(config, shop) {
 
     for (const [groupUrl, groupProducts] of groups) {
       await page.goto(groupUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
-      await page.waitForTimeout(6000);
+      // 活动页 SPA 初始化基础等待（原 6 秒）：scanAnomalyTab 会轮询等待「异常」tab 出现（最长 15 秒）
+      // 并在点击后确认列表切换，等待压力已由轮询承接，这里只留基础渲染时间即可。
+      await page.waitForTimeout(3000);
 
       let currentUrl = page.url();
       const title = await page.title();
