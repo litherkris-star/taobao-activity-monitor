@@ -572,21 +572,38 @@ async function scanAnomalyTab(page) {
     // 无数字标注（如「异常」不带 (N)）说明当前没有异常商品：3 秒内确认空列表即可，不必等满 10 秒。
     const waitMs = tab.count === null ? 3000 : 10000;
     let listChanged = false;
+    let tabActive = false;
     for (let w = 0; w < waitMs; w += 500) {
       await page.waitForTimeout(500);
       const now = await firstRowId();
       // 点击前有行：首行变化才算切换成功；点击前无行（列表还没渲染出来）：
-      // 出现首行也算切换成功，避免“点击前首行 无行”把页面加载慢误报成切换失败。
-      if (now && (beforeFirst === null || now !== beforeFirst)) { listChanged = true; break; }
+      // 仅出现首行不足以证明点击生效（可能是渲染异常后默认列表自行加载），必须「出现首行 + tab 变为 active」双确认，
+      // 堵住「点击异常tab未生效却抓到全部商品列表」的误报。
+      if (now && (beforeFirst === null || now !== beforeFirst)) listChanged = true;
+      if (beforeFirst === null) {
+        tabActive = await page.evaluate(() => {
+          const norm = (el) => (el.innerText || '').replace(/\s+/g, '');
+          for (const sel of ['.next-tabs-tab-inner', '.next-tabs-tab', '[role="tab"]', '[class*="tab"]']) {
+            for (const el of document.querySelectorAll(sel)) {
+              const t = norm(el);
+              if (t && t.startsWith('异常')) {
+                return el.getAttribute('aria-selected') === 'true' || /active|current|selected/i.test(el.className);
+              }
+            }
+          }
+          return false;
+        }).catch(() => false);
+      }
+      if (listChanged && (tabActive || beforeFirst !== null)) break;
     }
-    if (!listChanged) {
+    if (!listChanged || (beforeFirst === null && !tabActive)) {
       if (tab.count === null || tab.count === 0) {
         // 页面未标注异常数量（如「异常」tab 不带数字）= 当前无异常商品，空列表属正常，视为无异常。
         scanError = '';
       } else {
         scanError = beforeFirst === null
-          ? `点击「异常」tab 后商品列表未渲染（10 秒内无商品行），页面标注 ${tab.count} 个异常但未加载。`
-          : `点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst}）。`;
+          ? `扫描无效：点击「异常」tab 后商品列表未渲染且 tab 未激活（10 秒内无有效切换），页面标注 ${tab.count} 个异常但未加载。`
+          : `扫描无效：点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst}），疑似页面渲染异常。`;
       }
     }
   }
@@ -656,7 +673,23 @@ async function scanAnomalyTab(page) {
   }
   // 用 tab 括号里的异常数量做校验：抓到数与页面标注不符时在后台日志提醒，便于排查翻页/去重问题。
   // 数量不符或翻页失败时同时打印已抓到的 ID 明细（最多 20 个），方便直接核对抓的是哪些商品。
-  if (tab.count != null && anomalyIds.size !== tab.count) {
+  // 页面自证校验（比“与监控数比对”精确，不依赖拍脑袋阈值）：
+  // ① 页面标注存在时（如「异常(4)」）：异常列表不可能远多于标注。抓到数远超标注（>1.5 倍 + 10）
+  //    = 列表未切换抓到全部商品或页面渲染异常，判定扫描无效，整体丢弃不可用于比对。
+  // ② 页面未标注异常数量时（「异常」不带数字，正常应无异常商品=空列表）：却抓到 >30 个，
+  //    说明页面渲染不完整（连数量都没渲染出来）且抓的是全部列表，判定扫描无效。
+  // ③ 标注存在但只是轻微偏差（标注滞后几个）→ warn 提醒，不判无效（由调用方重扫收敛）。
+  if (tab.count != null && anomalyIds.size > tab.count * 1.5 + 10) {
+    const ids = [...anomalyIds];
+    const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
+    scanError = `扫描无效：异常名单抓到 ${anomalyIds.size} 个，远超页面标注 ${tab.count} 个，疑似点击「异常」tab 后列表未切换抓到全部商品；ID：${idList}`;
+  } else if (tab.count == null && anomalyIds.size > 0) {
+    // 页面未标注异常数量（「异常」不带数字）= 当前应无异常商品（空列表）；却抓到商品行，
+    // 说明页面渲染不完整（数量未渲染出来）且抓到的是全部商品列表，判定扫描无效，刷新重扫兜底。
+    const ids = [...anomalyIds];
+    const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
+    scanError = `扫描无效：页面未标注异常数量却抓到 ${anomalyIds.size} 个（正常无标注=无异常），疑似页面渲染不完整、列表未切换抓到全部商品；ID：${idList}`;
+  } else if (tab.count != null && anomalyIds.size !== tab.count) {
     const ids = [...anomalyIds];
     const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
     await log('warn', `异常 tab 数量与页面标注不符：抓到 ${anomalyIds.size} 个，页面标注 ${tab.count} 个${scanError ? `；${scanError}` : ''}；ID：${idList}`);
@@ -670,8 +703,21 @@ async function scanAnomalyTabWithRetry(page, retries = 2) {
   const merged = new Set();
   let declaredCount = null;
   let lastError = '';
+  let invalidScans = 0;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const scan = await scanAnomalyTab(page);
+    if (/^扫描无效/.test(scan.error || '')) {
+      // 扫描无效（列表未切换/页面渲染不完整/未标注数量却抓到大量商品）：本轮抓到的可能是全部商品列表，
+      // ID 完全不可信，不合并进 merged（避免污染后续轮次），刷新页面重扫以恢复渲染。
+      invalidScans += 1;
+      lastError = scan.error;
+      if (attempt < retries) {
+        await log('warn', `异常 tab 扫描第 ${attempt + 1} 次判定扫描无效（${lastError}），刷新页面后自动重扫…`);
+        try { await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 }); } catch (_) {}
+        await page.waitForTimeout(4000);
+      }
+      continue;
+    }
     scan.anomalyIds.forEach((id) => merged.add(id));
     if (scan.declaredCount != null) declaredCount = scan.declaredCount;
     if (!scan.error && (scan.declaredCount == null || merged.size === scan.declaredCount)) {
@@ -683,6 +729,12 @@ async function scanAnomalyTabWithRetry(page, retries = 2) {
       await log('warn', `异常 tab 扫描第 ${attempt + 1} 次未完整（${lastError}），3 秒后自动重扫…`);
       await page.waitForTimeout(3000);
     }
+  }
+  if (invalidScans > 0) {
+    // 最终轮仍是扫描无效：整体丢弃（merged 不含无效轮数据），返回空名单 + 错误，
+    // 调用方据此抛错走瞬时重试/通知人工，绝不把抓错的“全部商品列表”当异常比对。
+    await log('warn', `异常 tab 扫描 ${retries + 1} 次均判定扫描无效（${lastError}），已放弃本轮异常比对。`);
+    return { anomalyIds: new Set(), declaredCount, error: lastError };
   }
   await log('warn', `异常 tab 扫描 ${retries + 1} 次仍未完整（${lastError}），使用已抓到的 ${merged.size} 个 ID 继续本轮比对。`);
   return { anomalyIds: merged, declaredCount, error: lastError };
@@ -967,12 +1019,8 @@ async function runShopAttempt(config, shop) {
       // 切换到「异常」tab，翻页抓全量异常商品 ID，再与本页监控商品本地比对。
       // 带整轮重试：翻页失败或数量对不上会自动重扫，异常 ID 跨轮合并锁定。
       const scan = await scanAnomalyTabWithRetry(page);
-      // 异常名单数量合理性校验：抓到数远大于本页监控商品数（>3 倍且 >30）时，判定扫描无效——
-      // 典型场景是点击「异常」tab 后列表未切换、抓到的是全部商品列表（如「营销站点」新界面页面），
-      // 此时不用于比对报警，走瞬时错误重试；重试仍失败则通知人工检查页面。
-      if (scan.anomalyIds.size > 30 && scan.anomalyIds.size > groupProducts.length * 3) {
-        throw new Error(`异常名单数量异常（抓到 ${scan.anomalyIds.size} 个，本页监控 ${groupProducts.length} 个），疑似点击「异常」tab 后列表未切换抓到全部商品，请人工检查该店铺活动页。`);
-      }
+      // 扫描无效（列表未切换/页面渲染不完整）时 scanAnomalyTabWithRetry 已整体丢弃名单并返回 error，
+      // 这里 anomalyIds 为空即抛错走瞬时重试；重试仍失败则通知人工检查页面，绝不把抓错的“全部商品列表”当异常比对。
       if (scan.error && scan.anomalyIds.size === 0) {
         throw new Error(scan.error);
       }
@@ -1018,7 +1066,7 @@ async function runShopAttempt(config, shop) {
     // 「异常 tab 一个都没渲染出来」（现有：为空）说明活动页没加载出来（只渲染了后台外壳/被跳转），
     // 属偶发瞬时问题，归入 transientError 让 runShop 自动重开浏览器重试；有 tab 但没有[异常]tab 则不重试
     // （那可能是页面结构变化，重试无意义，避免死循环）。
-    const transient = isTransientBrowserError(error) || /页面未找到「异常」tab（现有：）/.test(error.message || '') || /商品列表未渲染/.test(error.message || '') || /异常名单数量异常/.test(error.message || '');
+    const transient = isTransientBrowserError(error) || /页面未找到「异常」tab（现有：）/.test(error.message || '') || /商品列表未渲染/.test(error.message || '') || /扫描无效/.test(error.message || '');
     return { results, error: error.message || String(error), detectedShopNames: [], transientError: transient };
   } finally {
     if (config.browserMode === 'cdp') {
