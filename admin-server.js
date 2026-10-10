@@ -972,16 +972,62 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/template') {
-      const templatePath = path.join(ROOT, '商品导入模板.xlsx');
-      if (!fs.existsSync(templatePath)) {
-        sendJson(res, 404, { error: '模板文件不存在：商品导入模板.xlsx' });
-        return;
+      // 动态生成导入模板：表头 + 当前 config 全部店铺/商品真实数据，方便在现有配置上增删改后一键导入。
+      try {
+        let XLSX;
+        try { XLSX = require('xlsx'); } catch (_) { sendJson(res, 500, { error: '缺少 xlsx 依赖，请先运行 npm install' }); return; }
+        const cfg = readConfig();
+        const headers = [
+          '店铺编号*', '店铺名称*', '商品ID*', '商品标题', '活动名称', '活动页URL',
+          '活动截止时间', '负责人', '监控开始时间', '监控模式', '下线活动关键词',
+          '恢复成功关键词', '容差分钟', '活动价(元)', '库存下限(件)', '启用状态',
+        ];
+        const rows = [headers];
+        let totalProducts = 0;
+        for (const shop of cfg.shops || []) {
+          for (const p of shop.products || []) {
+            totalProducts += 1;
+            rows.push([
+              shop.key, shop.name, p.productId, p.productName || '', p.activityName || '',
+              p.activityUrl || '', p.activityDeadline || '', p.owner || '', p.monitorSince || '',
+              p.monitorMode === 'signup_date' ? '报名时间' : '添加时间',
+              p.monitorActivityKeywords || '', p.recoveryActivityKeywords || '',
+              p.recoveryGraceMinutes || 0, p.expectedPrice || 0, p.minStock || 0,
+              p.enabled === false ? '停用' : '启用',
+            ]);
+          }
+        }
+        if (totalProducts === 0) {
+          rows.push(['shop01', '示例旗舰店', '', '', '', '', '', '', '', '', '', '', '', '', '', '启用']);
+        }
+        const guide = [
+          ['淘宝/天猫 活动监控 — 商品导入模板 填写说明'],
+          [],
+          ['1. 本模板已包含当前监控的全部店铺/商品（共 ' + totalProducts + ' 个商品），可直接在现有数据上增删改后导入。'],
+          ['2. 带 * 的列为必填：店铺编号、商品ID。'],
+          ['3. 店铺编号：同一个店铺填同一个编号（只用数字/字母/中划线），不同商品会自动归到同一店铺下。'],
+          ['4. 活动页URL：该商品报名的活动报名记录页链接。'],
+          ['   ★ 一个店铺有多个活动时，给每个商品填上各自的活动页URL，即可分别检测不同活动；'],
+          ['   ★ 留空则使用店铺默认的活动链接（网页管理里店铺上的「活动链接」）。'],
+          ['5. 导入后：新增店铺会创建，新增商品会添加，已存在的商品ID会更新为本次填写的配置。'],
+          ['6. 启用状态填「启用/停用」；监控模式填「报名时间/添加时间」；示例行若存在请删除。'],
+        ];
+        const wsData = XLSX.utils.aoa_to_sheet(rows);
+        wsData['!cols'] = headers.map((h) => ({ wch: h.length >= 4 ? Math.max(14, h.length + 2) : 10 }));
+        const wsGuide = XLSX.utils.aoa_to_sheet(guide);
+        wsGuide['!cols'] = [{ wch: 90 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, wsGuide, '填写说明');
+        XLSX.utils.book_append_sheet(wb, wsData, '导入数据');
+        const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        res.writeHead(200, {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent('商品导入模板.xlsx')}`,
+        });
+        res.end(buf);
+      } catch (e) {
+        sendJson(res, 500, { error: '模板生成失败：' + e.message });
       }
-      res.writeHead(200, {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent('商品导入模板.xlsx')}`,
-      });
-      res.end(fs.readFileSync(templatePath));
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/results') {

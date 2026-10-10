@@ -1,32 +1,34 @@
-PID=31188 | node  monitor.js --delay=1
-PID=19612 | "C:\Users\Administrator\AppData\Local\Doubao\User Data\sandbox_runtime\bases\d0ace100fdff5
-=== 最新一轮关键行（共 151 行） ===
-14:46:57] [INFO] [蔻丝旗舰店] 开始检测 17 个商品，profile=D:\taobao-activity-monitor\chrome-profile-KS
-14:47:11] [INFO] [蔻丝旗舰店] 自动登录成功，开始检测。
-14:47:22] [INFO] [蔻丝旗舰店] 进入活动页：活动报名，本页监控 17 个；活动异常名单共 4 个（页面标注 4）。
-14:47:26] [INFO] [收纳达人旗舰店] 开始检测 16 个商品，profile=D:\taobao-activity-monitor\profiles\SNDR
-14:47:40] [INFO] [收纳达人旗舰店] 自动登录成功，开始检测。
-14:47:52] [INFO] [收纳达人旗舰店] 进入活动页：活动报名，本页监控 16 个；活动异常名单共 7 个（页面标注 7）。
-14:47:56] [INFO] [英港旗舰店] 开始检测 16 个商品，profile=D:\taobao-activity-monitor\profiles\YG
-14:48:10] [INFO] [英港旗舰店] 自动登录成功，开始检测。
-14:48:21] [INFO] [英港旗舰店] 进入活动页：活动报名，本页监控 16 个；活动异常名单共 4 个（页面标注 4）。
-14:48:25] [INFO] [简约印相旗舰店] 开始检测 5 个商品，profile=D:\taobao-activity-monitor\profiles\JYYX
-14:48:40] [INFO] [简约印相旗舰店] 自动登录成功，开始检测。
-14:48:59] [INFO] [简约印相旗舰店] 进入活动页：活动报名，本页监控 5 个；活动异常名单共 0 个。
-14:49:03] [INFO] [良品主义旗舰店] 开始检测 6 个商品，profile=D:\taobao-activity-monitor\profiles\LPZY
-14:49:17] [INFO] [良品主义旗舰店] 自动登录成功，开始检测。
-14:49:28] [INFO] [良品主义旗舰店] 进入活动页：活动报名，本页监控 6 个；活动异常名单共 3 个（页面标注 3）。
-14:49:32] [INFO] [创庭旗舰店] 开始检测 7 个商品，profile=D:\taobao-activity-monitor\profiles\CT
-14:49:45] [INFO] [创庭旗舰店] 自动登录成功，开始检测。
-14:50:04] [INFO] [创庭旗舰店] 进入活动页：活动报名，本页监控 7 个；活动异常名单共 0 个。
-14:50:08] [INFO] [简居格旗舰店] 开始检测 6 个商品，profile=D:\taobao-activity-monitor\profiles\JJG
-14:50:22] [INFO] [简居格旗舰店] 自动登录成功，开始检测。
-14:50:41] [INFO] [简居格旗舰店] 进入活动页：活动报名，本页监控 6 个；活动异常名单共 0 个。
-14:50:45] [INFO] [三方居旗舰店] 开始检测 1 个商品，profile=D:\taobao-activity-monitor\profiles\SFJ
-14:50:58] [INFO] [三方居旗舰店] 自动登录成功，开始检测。
-14:51:09] [INFO] [三方居旗舰店] 进入活动页：活动报名，本页监控 1 个；活动异常名单共 1 个（页面标注 1）。
-14:51:13] [INFO] [巧居格旗舰店] 开始检测 1 个商品，profile=D:\taobao-activity-monitor\profiles\QJG
-14:51:27] [INFO] [巧居格旗舰店] 自动登录成功，开始检测。
-14:51:44] [INFO] [巧居格旗舰店] 进入活动页：活动报名，本页监控 1 个；活动异常名单共 0 个。
-14:51:48] [INFO] 多店铺检测完成：店铺 9 个，结果 75 条，活动异常 0 个（本轮新报警 0 个，恢复 0 个），店铺确认异常 0 个，识别异常 0 个。
-14:51:48] [INFO] 本轮检测耗时 292 秒，下次检测将在 45 分钟后执行。
+PID=32948 | node  monitor.js --delay=1
+PID=32136 | "C:\Users\Administrator\AppData\Local\Doubao\User Data\sandbox_runtime\bases\d0ace100fdff5
+=== 最新一轮关键行（共 150 行，首行时间 2026-10-10 17:42:36） ===
+17:42:36] [INFO] [蔻丝旗舰店] 开始检测 17 个商品，profile=D:\taobao-activity-monitor\chrome-profile-KS
+17:42:54] [INFO] [蔻丝旗舰店] 自动登录成功，开始检测。
+17:43:10] [INFO] [蔻丝旗舰店] 进入活动页：活动报名，本页监控 17 个；活动异常名单共 3 个（页面标注 3）。
+17:43:14] [INFO] [收纳达人旗舰店] 开始检测 16 个商品，profile=D:\taobao-activity-monitor\profiles\SNDR
+17:43:29] [INFO] [收纳达人旗舰店] 自动登录成功，开始检测。
+17:43:44] [INFO] [收纳达人旗舰店] 进入活动页：活动报名，本页监控 16 个；活动异常名单共 7 个（页面标注 7）。
+17:43:48] [INFO] [英港旗舰店] 开始检测 16 个商品，profile=D:\taobao-activity-monitor\profiles\YG
+17:44:02] [INFO] [英港旗舰店] 自动登录成功，开始检测。
+17:44:15] [INFO] [英港旗舰店] 进入活动页：活动报名，本页监控 16 个；活动异常名单共 4 个（页面标注 4）。
+17:44:20] [INFO] [简约印相旗舰店] 开始检测 5 个商品，profile=D:\taobao-activity-monitor\profiles\JYYX
+17:44:34] [INFO] [简约印相旗舰店] 自动登录成功，开始检测。
+17:44:54] [INFO] [简约印相旗舰店] 进入活动页：活动报名，本页监控 5 个；活动异常名单共 0 个。
+17:44:58] [INFO] [良品主义旗舰店] 开始检测 6 个商品，profile=D:\taobao-activity-monitor\profiles\LPZY
+17:45:12] [INFO] [良品主义旗舰店] 自动登录成功，开始检测。
+17:45:25] [INFO] [良品主义旗舰店] 进入活动页：活动报名，本页监控 6 个；活动异常名单共 4 个（页面标注 4）。
+17:45:30] [INFO] [创庭旗舰店] 开始检测 7 个商品，profile=D:\taobao-activity-monitor\profiles\CT
+17:45:44] [INFO] [创庭旗舰店] 自动登录成功，开始检测。
+17:46:06] [INFO] [创庭旗舰店] 进入活动页：活动报名，本页监控 7 个；活动异常名单共 0 个。
+17:46:10] [INFO] [简居格旗舰店] 开始检测 6 个商品，profile=D:\taobao-activity-monitor\profiles\JJG
+17:46:29] [INFO] [简居格旗舰店] 自动登录成功，开始检测。
+17:46:54] [INFO] [简居格旗舰店] 进入活动页：活动报名，本页监控 6 个；活动异常名单共 0 个。
+17:46:58] [INFO] [三方居旗舰店] 开始检测 1 个商品，profile=D:\taobao-activity-monitor\profiles\SFJ
+17:47:13] [INFO] [三方居旗舰店] 自动登录成功，开始检测。
+17:47:30] [INFO] [三方居旗舰店] 进入活动页：活动报名，本页监控 1 个；活动异常名单共 1 个（页面标注 1）。
+17:47:34] [INFO] [巧居格旗舰店] 开始检测 1 个商品，profile=D:\taobao-activity-monitor\profiles\QJG
+17:47:49] [INFO] [巧居格旗舰店] 自动登录成功，开始检测。
+17:48:08] [INFO] [巧居格旗舰店] 进入活动页：活动报名，本页监控 1 个；活动异常名单共 0 个。
+17:48:12] [INFO] 多店铺检测完成：店铺 9 个，结果 75 条，活动异常 0 个（本轮新报警 0 个，恢复 0 个），店铺确认异常 0 个，识别异常 0 个。
+17:48:12] [INFO] 本轮检测耗时 336 秒，下次检测将在 45 分钟后执行。
+=== 文件最后一行 ===
+[2026-10-10 17:48:12] [INFO] 本轮检测耗时 336 秒，下次检测将在 45 分钟后执行。
