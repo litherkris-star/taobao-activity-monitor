@@ -562,7 +562,7 @@ async function scanAnomalyTab(page) {
   // 页面初次渲染时「异常」tab 可能存在但还没有数字（页面壳未加载完，列表仍显示全部商品）。
   // 等数字出现（最多 6 秒，有异常时数字随渲染快速出现）再继续，避免在页面未渲染完时误抓全部列表。
   if (tab.count === null) {
-    for (let w = 0; w < 10000 && tab.count === null; w += 1000) {
+    for (let w = 0; w < 6000 && tab.count === null; w += 1000) {
       await page.waitForTimeout(1000);
       const again = await findAnomalyTab();
       if (again && again.count != null) tab = again;
@@ -571,78 +571,52 @@ async function scanAnomalyTab(page) {
   if (tab.count === 0) return { anomalyIds, declaredCount: 0 };
   // 点击后等待列表真正切换：记录点击前首行商品ID，轮询到首行变化为止（最多 10 秒）。
   // 背景：14:12 创庭曾“抓到 10 个（页面标注 1）”——点击异常 tab 后列表未切换，抓到的是默认列表第一页。
-  // 修复：无论 tab 点击前是否已激活（轮询期间可能已点击过），统一无条件等列表切换；
-  //       Fusion tabs 点击后 aria-selected 立即变 true，但列表数据异步加载，tab 激活 ≠ 列表已切换。
   const firstRowId = () => page.evaluate(() => {
     const tr = document.querySelector('tr.next-table-row');
     const m = tr && (tr.innerText || '').match(/商品ID\s*(\d{10,13})/);
     return m ? m[1] : null;
   }).catch(() => null);
-  const countRows = () => page.evaluate(() =>
-    Array.from(document.querySelectorAll('tr.next-table-row')).filter((el) => el.getBoundingClientRect().width > 0).length
-  ).catch(() => 0);
   const beforeFirst = await firstRowId();
-  {
-    // 标注存在且异常数少于每页容量（pageSize 通常 10）时，用「当前行数 ≤ 标注数」作为切换完成信号：
-    // 异常列表第一页最多 count 行，全部列表第一页是 10 行，一眼可区分——根治「tab 已激活但列表未切换」误抓旧列表。
-    const useRowCount = tab.count != null && tab.count < 10;
+  if (!tab.wasActive) {
     // 无数字标注（如「异常」不带 (N)）说明当前没有异常商品：3 秒内确认空列表即可，不必等满 10 秒。
-    const waitMs = useRowCount ? 10000 : (tab.count === null ? 3000 : 10000);
-    let switched = false;
+    const waitMs = tab.count === null ? 3000 : 10000;
+    let listChanged = false;
     let tabActive = false;
-    for (let w = 0; w < waitMs && !switched; w += 500) {
+    for (let w = 0; w < waitMs; w += 500) {
       await page.waitForTimeout(500);
-      if (useRowCount) {
-        const rows = await countRows();
-        // 列表切换后应显示异常商品行（≤ count）；行数仍为 pageSize（10）说明还是全部列表，继续等。
-        if (rows <= tab.count) switched = true;
-      } else {
-        const now = await firstRowId();
-        // 点击前有行：首行变化才算切换成功；点击前无行（列表还没渲染出来）：
-        // 仅出现首行不足以证明点击生效（可能是渲染异常后默认列表自行加载），必须「出现首行 + tab 变为 active」双确认，
-        // 堵住「点击异常tab未生效却抓到全部商品列表」的误报。
-        if (now && (beforeFirst === null || now !== beforeFirst)) switched = true;
-        if (beforeFirst === null) {
-          tabActive = await page.evaluate(() => {
-            const norm = (el) => (el.innerText || '').replace(/\s+/g, '');
-            for (const sel of ['.next-tabs-tab-inner', '.next-tabs-tab', '[role="tab"]', '[class*="tab"]']) {
-              for (const el of document.querySelectorAll(sel)) {
-                const t = norm(el);
-                if (t && t.startsWith('异常')) {
-                  return el.getAttribute('aria-selected') === 'true' || /active|current|selected/i.test(el.className);
-                }
+      const now = await firstRowId();
+      // 点击前有行：首行变化才算切换成功；点击前无行（列表还没渲染出来）：
+      // 仅出现首行不足以证明点击生效（可能是渲染异常后默认列表自行加载），必须「出现首行 + tab 变为 active」双确认，
+      // 堵住「点击异常tab未生效却抓到全部商品列表」的误报。
+      if (now && (beforeFirst === null || now !== beforeFirst)) listChanged = true;
+      if (beforeFirst === null) {
+        tabActive = await page.evaluate(() => {
+          const norm = (el) => (el.innerText || '').replace(/\s+/g, '');
+          for (const sel of ['.next-tabs-tab-inner', '.next-tabs-tab', '[role="tab"]', '[class*="tab"]']) {
+            for (const el of document.querySelectorAll(sel)) {
+              const t = norm(el);
+              if (t && t.startsWith('异常')) {
+                return el.getAttribute('aria-selected') === 'true' || /active|current|selected/i.test(el.className);
               }
             }
-            return false;
-          }).catch(() => false);
-        }
-        if (switched && (tabActive || beforeFirst !== null)) break;
-        if (switched && beforeFirst === null && !tabActive) switched = false;
+          }
+          return false;
+        }).catch(() => false);
       }
+      if (listChanged && (tabActive || beforeFirst !== null)) break;
     }
-    if (!switched) {
+    if (!listChanged || (beforeFirst === null && !tabActive)) {
       if (tab.count === null || tab.count === 0) {
         // 页面未标注异常数量（如「异常」tab 不带数字）= 当前无异常商品，空列表属正常，视为无异常。
         scanError = '';
       } else {
-        scanError = useRowCount
-          ? `扫描无效：点击「异常」tab 后列表未切换（10 秒内行数仍为 ${tab.count === null ? '?' : '>'}标注 ${tab.count}，疑似抓的是全部商品列表）。`
-          : (beforeFirst === null
-            ? `扫描无效：点击「异常」tab 后商品列表未渲染且 tab 未激活（10 秒内无有效切换），页面标注 ${tab.count} 个异常但未加载。`
-            : `扫描无效：点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst}），疑似页面渲染异常。`);
+        scanError = beforeFirst === null
+          ? `扫描无效：点击「异常」tab 后商品列表未渲染且 tab 未激活（10 秒内无有效切换），页面标注 ${tab.count} 个异常但未加载。`
+          : `扫描无效：点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst}），疑似页面渲染异常。`;
       }
     }
   }
   await page.waitForTimeout(1500); // 列表渲染稳定
-
-  // 抓取前快速校验：标注存在且异常数少于每页容量（pageSize 通常 10）时，若当前行数仍 > 标注 →
-  // 列表未切换（抓的是全部商品第一页），立即判扫描无效，不必等翻页失败（省 30~60 秒）。
-  if (tab.count != null && tab.count < 10 && scanError === '') {
-    const rowsNow = await countRows();
-    if (rowsNow > tab.count) {
-      scanError = `扫描无效：点击「异常」tab 后列表未切换（抓取前仍有 ${rowsNow} 行 > 标注 ${tab.count}），疑似抓的是全部商品列表。`;
-    }
-  }
 
   for (let pageIndex = 0; pageIndex < 200; pageIndex += 1) {
     const rowIds = await page.evaluate(() => {
@@ -1040,9 +1014,7 @@ async function runShopAttempt(config, shop) {
 
     for (const [groupUrl, groupProducts] of groups) {
       await page.goto(groupUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
-      // 活动页 SPA 初始化基础等待（原 6 秒）：scanAnomalyTab 会轮询等待「异常」tab 出现（最长 15 秒）
-      // 并在点击后确认列表切换，等待压力已由轮询承接，这里只留基础渲染时间即可。
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(6000);
 
       let currentUrl = page.url();
       const title = await page.title();
