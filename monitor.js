@@ -967,6 +967,12 @@ async function runShopAttempt(config, shop) {
       // 切换到「异常」tab，翻页抓全量异常商品 ID，再与本页监控商品本地比对。
       // 带整轮重试：翻页失败或数量对不上会自动重扫，异常 ID 跨轮合并锁定。
       const scan = await scanAnomalyTabWithRetry(page);
+      // 异常名单数量合理性校验：抓到数远大于本页监控商品数（>3 倍且 >30）时，判定扫描无效——
+      // 典型场景是点击「异常」tab 后列表未切换、抓到的是全部商品列表（如「营销站点」新界面页面），
+      // 此时不用于比对报警，走瞬时错误重试；重试仍失败则通知人工检查页面。
+      if (scan.anomalyIds.size > 30 && scan.anomalyIds.size > groupProducts.length * 3) {
+        throw new Error(`异常名单数量异常（抓到 ${scan.anomalyIds.size} 个，本页监控 ${groupProducts.length} 个），疑似点击「异常」tab 后列表未切换抓到全部商品，请人工检查该店铺活动页。`);
+      }
       if (scan.error && scan.anomalyIds.size === 0) {
         throw new Error(scan.error);
       }
@@ -1012,7 +1018,7 @@ async function runShopAttempt(config, shop) {
     // 「异常 tab 一个都没渲染出来」（现有：为空）说明活动页没加载出来（只渲染了后台外壳/被跳转），
     // 属偶发瞬时问题，归入 transientError 让 runShop 自动重开浏览器重试；有 tab 但没有[异常]tab 则不重试
     // （那可能是页面结构变化，重试无意义，避免死循环）。
-    const transient = isTransientBrowserError(error) || /页面未找到「异常」tab（现有：）/.test(error.message || '') || /商品列表未渲染/.test(error.message || '');
+    const transient = isTransientBrowserError(error) || /页面未找到「异常」tab（现有：）/.test(error.message || '') || /商品列表未渲染/.test(error.message || '') || /异常名单数量异常/.test(error.message || '');
     return { results, error: error.message || String(error), detectedShopNames: [], transientError: transient };
   } finally {
     if (config.browserMode === 'cdp') {
