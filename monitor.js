@@ -571,13 +571,17 @@ async function scanAnomalyTab(page) {
   if (tab.count === 0) return { anomalyIds, declaredCount: 0 };
   // 点击后等待列表真正切换：记录点击前首行商品ID，轮询到首行变化为止（最多 10 秒）。
   // 背景：14:12 创庭曾“抓到 10 个（页面标注 1）”——点击异常 tab 后列表未切换，抓到的是默认列表第一页。
+  // 修复：无条件进入切换等待（不再用 wasActive 门）。轮询期间 tab 可能已被点击过（wasActive=true），
+  //       但 Fusion tabs 点击后 aria-selected 立即变 true、列表数据异步加载，tab 激活 ≠ 列表已切换；
+  //       若此时跳过等待直接抓取，会抓到旧列表（全部商品第一页 10 个），导致「抓到10个>标注7」反复误判。
+  //       统一等到「列表真正切换」再抓取：首行变化（或点击前空白时「出现首行 + tab 激活」双确认）。
   const firstRowId = () => page.evaluate(() => {
     const tr = document.querySelector('tr.next-table-row');
     const m = tr && (tr.innerText || '').match(/商品ID\s*(\d{10,13})/);
     return m ? m[1] : null;
   }).catch(() => null);
   const beforeFirst = await firstRowId();
-  if (!tab.wasActive) {
+  {
     // 无数字标注（如「异常」不带 (N)）说明当前没有异常商品：3 秒内确认空列表即可，不必等满 10 秒。
     const waitMs = tab.count === null ? 3000 : 10000;
     let listChanged = false;
