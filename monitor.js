@@ -559,6 +559,15 @@ async function scanAnomalyTab(page) {
     if (!tab) await page.waitForTimeout(1000);
   }
   if (!tab) return { anomalyIds, error: `页面未找到「异常」tab（现有：${(lastTabs || []).join('/')}）` };
+  // 页面初次渲染时「异常」tab 可能存在但还没有数字（页面壳未加载完，列表仍显示全部商品）。
+  // 等数字出现（最多 6 秒，有异常时数字随渲染快速出现）再继续，避免在页面未渲染完时误抓全部列表。
+  if (tab.count === null) {
+    for (let w = 0; w < 6000 && tab.count === null; w += 1000) {
+      await page.waitForTimeout(1000);
+      const again = await findAnomalyTab();
+      if (again && again.count != null) tab = again;
+    }
+  }
   if (tab.count === 0) return { anomalyIds, declaredCount: 0 };
   // 点击后等待列表真正切换：记录点击前首行商品ID，轮询到首行变化为止（最多 10 秒）。
   // 背景：14:12 创庭曾“抓到 10 个（页面标注 1）”——点击异常 tab 后列表未切换，抓到的是默认列表第一页。
@@ -622,6 +631,13 @@ async function scanAnomalyTab(page) {
     });
     rowIds.forEach((id) => anomalyIds.add(id));
 
+    // 快速止损：tab 无数字却已抓到 >30 个 = 列表未切换抓到全部商品（正常无标注=无异常空列表），
+    // 立即终止翻页判扫描无效，避免翻完几十页才判无效（439 个要翻 44 页，浪费 2 分多钟）。
+    if (tab.count === null && anomalyIds.size > 30) {
+      scanError = `扫描无效：页面未标注异常数量却已抓到 ${anomalyIds.size} 个（正常无标注=无异常），疑似列表未切换抓到全部商品，提前终止翻页。`;
+      break;
+    }
+
     // 主分页状态：页面可能有多个 next-pagination（如顶部迷你"1/1"分页 + 底部主分页），
     // 只认「可见且含页码列表（.next-pagination-list）的最后一个」，避免点到无关分页。
     const mainPager = () => page.evaluate(() => {
@@ -663,10 +679,16 @@ async function scanAnomalyTab(page) {
       }
     }
     if (!moved) {
-      // 连点 3 次页码都没变：记下错误并停止本页扫描，已抓到的 ID 仍可用，不把错误污染到商品结果。
       const ids = [...anomalyIds];
       const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
-      scanError = `翻页失败：停留在第 ${beforePageNo} 页，已抓 ${anomalyIds.size} 个（页面标注 ${tab.count}）；ID：${idList}`;
+      if (tab.count != null && anomalyIds.size > tab.count) {
+        // 标注 N 个异常、异常数少于每页容量时，第一页行数不应超过 N。抓到超过标注 =
+        // 混入了全部商品列表的行（列表未切换），此时部分比对结果不可信，升级为扫描无效。
+        scanError = `扫描无效：翻页失败停留在第 ${beforePageNo} 页，已抓 ${anomalyIds.size} 个超过页面标注 ${tab.count} 个，疑似列表未切换抓到全部商品；ID：${idList}`;
+      } else {
+        // 连点 3 次页码都没变：记下错误并停止本页扫描，已抓到的 ID 仍可用，不把错误污染到商品结果。
+        scanError = `翻页失败：停留在第 ${beforePageNo} 页，已抓 ${anomalyIds.size} 个（页面标注 ${tab.count}）；ID：${idList}`;
+      }
       break;
     }
     await page.waitForTimeout(1500); // 页码变化后等行渲染稳定
