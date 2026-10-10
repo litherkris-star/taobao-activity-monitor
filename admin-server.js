@@ -551,8 +551,8 @@ function parseImportWorkbook(buffer) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheetName = workbook.SheetNames.find((name) => name.includes('导入')) || workbook.SheetNames[0];
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
-  // 模板中必填列带 *（如“商品ID*”），识别表头和列映射时先剥掉星号。
-  const headerName = (cell) => String(cell).trim().replace(/[＊*]+\s*$/, '');
+  // 模板中必填列带 *（如“商品ID*”），识别表头和列映射时先剥掉星号；可不填列带“（可不填）”标注，同样剥掉。
+  const headerName = (cell) => String(cell).trim().replace(/[＊*]+\s*$/, '').replace(/（可不填）$/, '');
   const headerIndex = rows.findIndex((row) => row.some((cell) => headerName(cell) === '商品ID'));
   if (headerIndex < 0) throw new Error('未找到表头行：第一行请使用模板中的列标题（店铺编号、店铺名称、商品ID……）');
 
@@ -972,45 +972,31 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/template') {
-      // 动态生成导入模板：表头 + 当前 config 全部店铺/商品真实数据，方便在现有配置上增删改后一键导入。
+      // 动态生成导入模板：表头 + 1 行示例（页面显示的列在前，可不填的列标注并放最后）。
       try {
         let XLSX;
         try { XLSX = require('xlsx'); } catch (_) { sendJson(res, 500, { error: '缺少 xlsx 依赖，请先运行 npm install' }); return; }
-        const cfg = readConfig();
         const headers = [
           '店铺编号*', '店铺名称*', '商品ID*', '商品标题', '活动名称', '活动页URL',
-          '活动截止时间', '负责人', '监控开始时间', '监控模式', '下线活动关键词',
-          '恢复成功关键词', '容差分钟', '活动价(元)', '库存下限(件)', '启用状态',
+          '活动截止时间', '负责人', '监控开始时间', '监控模式', '启用状态',
+          '下线活动关键词（可不填）', '恢复成功关键词（可不填）', '容差分钟（可不填）', '活动价(元)（可不填）', '库存下限(件)（可不填）',
         ];
-        const rows = [headers];
-        let totalProducts = 0;
-        for (const shop of cfg.shops || []) {
-          for (const p of shop.products || []) {
-            totalProducts += 1;
-            rows.push([
-              shop.key, shop.name, p.productId, p.productName || '', p.activityName || '',
-              p.activityUrl || '', p.activityDeadline || '', p.owner || '', p.monitorSince || '',
-              p.monitorMode === 'signup_date' ? '报名时间' : '添加时间',
-              p.monitorActivityKeywords || '', p.recoveryActivityKeywords || '',
-              p.recoveryGraceMinutes || 0, p.expectedPrice || 0, p.minStock || 0,
-              p.enabled === false ? '停用' : '启用',
-            ]);
-          }
-        }
-        if (totalProducts === 0) {
-          rows.push(['shop01', '示例旗舰店', '', '', '', '', '', '', '', '', '', '', '', '', '', '启用']);
-        }
+        const rows = [
+          headers,
+          ['shop01', '示例旗舰店', '1234567890123', '示例商品标题', '10月超级88', 'https://myseller.taobao.com/home.htm', '2026-10-31', '张三', '2026-10-01', '添加时间', '启用', '', '', '', '', ''],
+        ];
         const guide = [
           ['淘宝/天猫 活动监控 — 商品导入模板 填写说明'],
           [],
-          ['1. 本模板已包含当前监控的全部店铺/商品（共 ' + totalProducts + ' 个商品），可直接在现有数据上增删改后导入。'],
-          ['2. 带 * 的列为必填：店铺编号、商品ID。'],
-          ['3. 店铺编号：同一个店铺填同一个编号（只用数字/字母/中划线），不同商品会自动归到同一店铺下。'],
-          ['4. 活动页URL：该商品报名的活动报名记录页链接。'],
+          ['1. 带 * 的列为必填：店铺编号、商品ID。'],
+          ['2. 店铺编号：同一个店铺填同一个编号（只用数字/字母/中划线），不同商品会自动归到同一店铺下。'],
+          ['3. 活动页URL：该商品报名的活动报名记录页链接。'],
           ['   ★ 一个店铺有多个活动时，给每个商品填上各自的活动页URL，即可分别检测不同活动；'],
           ['   ★ 留空则使用店铺默认的活动链接（网页管理里店铺上的「活动链接」）。'],
-          ['5. 导入后：新增店铺会创建，新增商品会添加，已存在的商品ID会更新为本次填写的配置。'],
-          ['6. 启用状态填「启用/停用」；监控模式填「报名时间/添加时间」；示例行若存在请删除。'],
+          ['4. 导入后：新增店铺会创建，新增商品会添加，已存在的商品ID会更新为本次填写的配置。'],
+          ['5. 启用状态填「启用/停用」；监控模式填「报名时间/添加时间」。'],
+          ['6. 最后 5 列为可不填（网页管理里不显示），留空即可：下线活动关键词、恢复成功关键词、容差分钟、活动价(元)、库存下限(件)。'],
+          ['7. 示例行（shop01）导入前请删除。'],
         ];
         const wsData = XLSX.utils.aoa_to_sheet(rows);
         wsData['!cols'] = headers.map((h) => ({ wch: h.length >= 4 ? Math.max(14, h.length + 2) : 10 }));
