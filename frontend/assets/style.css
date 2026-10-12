@@ -375,3 +375,134 @@
     .nav-item { justify-content: center; padding: 14px 0; }
     .content { padding: 16px 14px 60px; }
   }
+
+  /* ============================================================
+     机甲特效增强层（白色机甲风 · 强化版）
+     ============================================================ */
+
+  /* --- 氛围装饰：四角机甲角标 + 背景扫描光带 --- */
+  .mecha-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .mecha-bg .corner {
+    position: fixed; width: 30px; height: 30px;
+    border: 2.5px solid rgba(37, 99, 235, .5);
+    animation: cornerPulse 4s ease-in-out infinite;
+  }
+  .mecha-bg .corner.tl { top: 10px; left: 10px; border-right: none; border-bottom: none; border-radius: 6px 0 0 0; }
+  .mecha-bg .corner.tr { top: 10px; right: 10px; border-left: none; border-bottom: none; border-radius: 0 6px 0 0; }
+  .mecha-bg .corner.bl { bottom: 10px; left: 10px; border-right: none; border-top: none; border-radius: 0 0 0 6px; }
+  .mecha-bg .corner.br { bottom: 10px; right: 10px; border-left: none; border-top: none; border-radius: 0 0 6px 0; }
+  @keyframes cornerPulse { 0%, 100% { opacity: .3; } 50% { opacity: .95; } }
+  .mecha-bg .scan-line {
+    position: fixed; left: 0; right: 0; height: 2.5px; top: -4%;
+    background: linear-gradient(90deg, transparent 0%, rgba(56, 189, 248, .5) 30%, rgba(37, 99, 235, .75) 50%, rgba(56, 189, 248, .5) 70%, transparent 100%);
+    animation: bgScan 17s linear infinite;
+  }
+  @keyframes bgScan {
+    0% { top: -4%; opacity: 0; }
+    6% { opacity: 1; }
+    94% { opacity: 1; }
+    100% { top: 105%; opacity: 0; }
+  }
+
+  /* --- 背景网格强化：加亮网格 + 电路点阵 --- */
+  body::before {
+    background-image:
+      radial-gradient(circle, rgba(37, 99, 235, .09) 1px, transparent 1.2px),
+      linear-gradient(rgba(70, 105, 175, .07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(70, 105, 175, .07) 1px, transparent 1px);
+    background-size: 26px 26px, 26px 26px, 26px 26px;
+  }
+
+  /* --- 卡片顶部能量流（每张卡片一条流动光带） --- */
+  .card::after {
+    content: ''; position: absolute; top: -1px; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, #2563eb 30%, #38bdf8 50%, #2563eb 70%, transparent);
+    background-size: 220% 100%;
+    animation: energyFlow 6s linear infinite;
+    opacity: .8; border-radius: 6px 6px 0 0;
+  }
+  .shop-card::after {
+    content: ''; position: absolute; top: -1px; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, #2563eb, #38bdf8, transparent);
+    background-size: 220% 100%;
+    animation: energyFlow 7s linear infinite;
+    opacity: .65; border-radius: 6px 6px 0 0;
+  }
+  @keyframes energyFlow { to { background-position: -220% 0; } }
+
+  /* --- 顶栏底部机甲能量线 --- */
+  .topbar::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
+    background: linear-gradient(90deg, #2563eb, #38bdf8, #60a5fa, #2563eb);
+    background-size: 200% 100%;
+    animation: energyFlow 5s linear infinite;
+    opacity: .9;
+  }
+
+  /* --- 页面入场扫描线（切换页面时光带从上往下扫过） --- */
+  .page-enter { position: relative; }
+  .page-enter::before {
+    content: ''; position: absolute; left: 0; right: 0; height: 3px; top: -4px;
+    background: linear-gradient(90deg, transparent, rgba(56, 189, 248, .75), transparent);
+    animation: pageScan .85s ease-out .05s both;
+    pointer-events: none; z-index: 6;
+  }
+  @keyframes pageScan {
+    0% { top: -4px; opacity: 0; }
+    10% { opacity: 1; }
+    100% { top: 106%; opacity: 0; }
+  }
+
+  /* --- 侧边导航：激活项斜纹装甲纹理 + 辉光 --- */
+  .nav-item.active::after {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(-45deg, rgba(37, 99, 235, .08) 0 6px, transparent 6px 12px);
+    pointer-events: none;
+  }
+  .sidebar .brand h1 {
+    filter: drop-shadow(0 0 5px rgba(37, 99, 235, .35));
+  }
+
+  /* --- 按钮：hover 能量光环扩散 --- */
+  .btn-primary:hover {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .16), 0 4px 18px rgba(37, 99, 235, .5);
+  }
+  .btn-detect:hover {
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, .18), 0 4px 16px rgba(22, 163, 74, .5);
+  }
+
+  /* --- 统计数字：下方能量槽填充动画 --- */
+  .stat-cell .v::after {
+    content: ''; display: block; width: 100%; height: 2px; margin-top: 6px;
+    background: linear-gradient(90deg, #2563eb, #38bdf8);
+    transform-origin: left;
+    animation: slotFill 7s ease-in-out infinite alternate;
+  }
+  @keyframes slotFill {
+    0% { transform: scaleX(0); opacity: .25; }
+    100% { transform: scaleX(1); opacity: .9; }
+  }
+
+  /* --- 店铺分组头：斜纹面板纹理 + 箭头联动 --- */
+  .shop-group-head {
+    background-image: repeating-linear-gradient(-45deg, rgba(37, 99, 235, .03) 0 6px, transparent 6px 12px);
+  }
+  .shop-group-head .arrow { transition: transform .18s ease, color .2s ease; }
+  .shop-group-head:hover .arrow { color: #2563eb; }
+
+  /* --- 店铺卡片头部：左侧机甲指示条 --- */
+  .shop-head { position: relative; }
+  .shop-head::before {
+    content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+    background: linear-gradient(180deg, #2563eb, #38bdf8); border-radius: 0 3px 3px 0;
+  }
+
+  /* --- 表头：淡斜纹面板 --- */
+  th { background-image: repeating-linear-gradient(-45deg, rgba(37, 99, 235, .035) 0 6px, transparent 6px 12px); }
+
+  /* --- 徽章：机甲切角 --- */
+  .badge { border-radius: 3px; clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%); }
+
+  /* --- 滚动条：机甲蓝渐变滑块 --- */
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #93b4e8, #5f8fd6); border: 1px solid rgba(37, 99, 235, .25); }
+  ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, #7fa6e0, #4a7cc9); }
