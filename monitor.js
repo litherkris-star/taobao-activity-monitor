@@ -14,7 +14,7 @@ const LOG_DIR = path.join(ROOT, 'logs');
 const DATA_DIR = path.join(ROOT, 'data');
 const RESULTS_PATH = path.join(DATA_DIR, 'last-results.json');
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
-// 暂停标志文件：网页管理端「停止检测」写入该文件，守护进程检测到后暂停自动巡检；「恢复检测」删除它。
+// 暂停标志文件：网页管理端「关闭定时检测」写入该文件，守护进程检测到后暂停自动巡检；「开启定时检测」删除它。
 const PAUSE_FLAG_PATH = path.join(DATA_DIR, 'monitor-paused.flag');
 const DEFAULT_ACTIVITY_URL = 'https://myseller.taobao.com/home.htm';
 // 代码版本号：启动时写入日志、每轮写入检测结果。怀疑“改了半天没生效”时，先看网页上显示的版本号是不是最新的。
@@ -316,7 +316,10 @@ function pidAlive(pid) {
   try {
     const out = execSync(`powershell -NoProfile -NonInteractive -Command "(Get-Process -Id ${n} -ErrorAction SilentlyContinue) -ne $null"`, { timeout: 8000, encoding: 'utf8' }).trim();
     return /^True$/i.test(out);
-  } catch (_) { return false; }
+  } catch (_) {
+    // powershell 查询失败（超时/无法启动）：保守视为存活，避免误判锁持有者死亡而被并发接管（宁可少检测，不可并发触发风控）。
+    return true;
+  }
 }
 async function acquireDetectLock(type, shopKey) {
   await fsp.mkdir(DATA_DIR, { recursive: true }).catch(() => {});
@@ -966,13 +969,16 @@ async function promptManualLogin(shop) {
   }
   try {
     fs.writeFileSync(flagPath, localNow() + '\n', 'utf8');
-    // 用当前 node 的绝对路径（process.execPath）调 shop-login.js，不依赖系统 PATH，避免计划任务环境找不到 node。
-    spawn('cmd.exe', ['/c', `"${process.execPath}" shop-login.js ${shop.key} --auto > login-${shop.key}.log 2>&1`], {
+    // 直接 spawn 当前 node（process.execPath）跑 shop-login.js，不经 cmd /c：
+    // 旧写法在 cmd 里给 node 路径加引号会被 cmd 误当成命令名（报「不是内部或外部命令」）。
+    // detached + stdio ignore：不弹 node 黑窗；shop-login.js 自己启动可见 Chrome 供人工过验证。
+    const loginChild = spawn(process.execPath, [path.join(ROOT, 'shop-login.js'), shop.key, '--auto'], {
       cwd: ROOT,
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
-    }).unref();
+    });
+    loginChild.unref();
     await log('alarm', `[${shop.name}] 登录被风控拦截：已自动打开可见 Chrome 登录窗口，请在窗口内完成滑块/短信验证（自动保存登录态）。本轮该店铺挂起，其他店铺继续检测。`);
   } catch (error) {
     await log('error', `[${shop.name}] 自动弹出登录窗口失败：${error.message || error}（可手动执行 node shop-login.js ${shop.key} --auto）`);
@@ -1194,7 +1200,7 @@ async function runShop(config, shop) {
 
 // 商品级报警去重：异常期间按 anomalyRepeatMinutes 重复提醒；恢复后自动通知。
 // partialKey 非空表示只检测了单个店铺：其他店铺的报警状态必须原样保留，只更新该店铺的商品。
-function diffProductAlerts(config, allResults, state, partialKey) {
+function diffProductAlerts(config, allResults, state, partialKey, preserveUnseen) {
   const productAlerts = state.productAlerts && typeof state.productAlerts === 'object' ? state.productAlerts : {};
   const now = Date.now();
   const repeatMs = config.anomalyRepeatMinutes * 60 * 1000;
@@ -1202,10 +1208,17 @@ function diffProductAlerts(config, allResults, state, partialKey) {
   const toRecover = [];
   // 单店铺检测时先继承其他店铺的旧报警状态，再覆盖本店铺部分；全量检测时从零重建。
   const nextAlerts = {};
-  if (partialKey) {
+  if (partialKey && preserveUnseen) {
+    // 单店铺轮被「停止当前检测」中止（本店铺未跑）：继承全部旧报警状态，等下轮完整检测再重建。
+    for (const [key, value] of Object.entries(productAlerts)) nextAlerts[key] = value;
+  } else if (partialKey) {
     for (const [key, value] of Object.entries(productAlerts)) {
       if (!key.startsWith(`${partialKey}:`)) nextAlerts[key] = value;
     }
+  } else if (preserveUnseen) {
+    // 全量轮被中止：未跑店铺结果缺失，先继承全部旧报警状态，已跑店铺的结果再覆盖
+    //（避免未跑店铺报警状态被清空，导致下轮重复当成首次异常推送钉钉）。
+    for (const [key, value] of Object.entries(productAlerts)) nextAlerts[key] = value;
   }
 
   for (const item of allResults) {
@@ -1237,10 +1250,13 @@ function diffProductAlerts(config, allResults, state, partialKey) {
 // 本轮发现商品/店铺异常 → 把本轮时间记为「异常开始」写入 state；
 // 下一轮检测不再异常 → 以本轮（恢复轮）时间为「恢复时间」，生成一段 {start ~ end} 记录，
 // 保留最近 40 条供看板展示「持续中」和「已恢复」两种情况。
-function updateAnomalyDurations(state, config, allResults, shopErrors, nowText, onlyShopKey) {
+function updateAnomalyDurations(state, config, allResults, shopErrors, nowText, onlyShopKey, processedShopKeys) {
   const sinceMap = state.productAnomalySince && typeof state.productAnomalySince === 'object' ? state.productAnomalySince : {};
   const shopSince = state.shopAnomalySince && typeof state.shopAnomalySince === 'object' ? state.shopAnomalySince : {};
   const recoveries = Array.isArray(state.recentRecoveries) ? state.recentRecoveries : [];
+  // 本轮实际处理过的店铺集合：单店铺轮只含该店铺；中断轮只含已跑完店铺；完整全量轮含全部启用店铺。
+  // 未处理店铺保持原状态（既不记开始也不记恢复），避免单店铺轮把其他异常店铺误标恢复、中断轮把未跑异常店铺误标恢复。
+  const processed = processedShopKeys instanceof Set ? processedShopKeys : null;
 
   if (!onlyShopKey) {
     // 全量检测：清掉已不在店铺集合里的孤儿记录（商品删除/店铺停用后自动清理）
@@ -1275,6 +1291,7 @@ function updateAnomalyDurations(state, config, allResults, shopErrors, nowText, 
   // 店铺：本轮失败→记开始；成功→结束持续段（瞬时/已自动恢复的失败不在此列，shopErrors 为确认异常）
   const errorKeys = new Set(shopErrors.map((e) => e.shopKey));
   for (const shop of config.shops || []) {
+    if (processed && !processed.has(shop.key)) continue; // 本轮未处理（单店铺轮的其他店铺 / 中断轮的未跑店铺）：保持原状态
     if (errorKeys.has(shop.key)) {
       if (!shopSince[shop.key]) shopSince[shop.key] = nowText;
     } else if (shopSince[shop.key]) {
@@ -1333,12 +1350,14 @@ async function runCycle(onlyShopKey) {
     const shopErrors = [];
     const shopSummaries = [];
     const shopRecoveryItems = [];
+    let cycleInterrupted = false; // 本轮是否被「停止当前检测」指令中止（中止轮结果不完整，不能覆盖结果文件）
 
     // 单店铺最长耗时兜底：超过即放弃该店铺本轮检测（页面卡死时防止整轮永久挂起），保证整轮一定能收尾、时间戳一定会更新。
     const shopTimeoutMs = Math.max(5, Number(config.shopTimeoutMinutes) || 12) * 60 * 1000;
     for (const shop of shops) {
       // 「停止当前检测」支持：每店检查中止标记，收到指令立即中断本轮，剩余店铺跳过。
       if (isStopCycleRequested()) {
+        cycleInterrupted = true;
         await log('warn', `收到「停止当前检测」指令，中止本轮检测（已处理 ${allResults.length} 条结果，剩余店铺跳过）。`);
         removeStopCycleFlag();
         break;
@@ -1422,7 +1441,7 @@ async function runCycle(onlyShopKey) {
       state.productInfo[infoKey] = info;
     }
 
-    const { toAlert, toRecover } = diffProductAlerts(config, allResults, state, onlyShopKey || '');
+    const { toAlert, toRecover } = diffProductAlerts(config, allResults, state, onlyShopKey || '', cycleInterrupted);
 
     if (toAlert.length) {
       const quiet = isInQuietHours(config);
@@ -1508,10 +1527,22 @@ async function runCycle(onlyShopKey) {
     state.lastSuccessText = localNow();
     if (!shopErrors.length) state.lastErrorKey = '';
     // 异常持续时间记录（信息看板）：本轮异常开始 / 下一轮恢复生成持续段
-    updateAnomalyDurations(state, config, allResults, shopErrors, localNow(), onlyShopKey);
+    let processedShopKeys;
+    if (cycleInterrupted) {
+      processedShopKeys = new Set(shopSummaries.map((item) => item.key)); // 中断轮：只含已跑完店铺
+    } else if (onlyShopKey) {
+      processedShopKeys = new Set([onlyShopKey]); // 单店铺轮：只含本店铺
+    } else {
+      processedShopKeys = new Set(shops.map((item) => item.key)); // 完整全量轮：全部启用店铺
+    }
+    updateAnomalyDurations(state, config, allResults, shopErrors, localNow(), onlyShopKey, processedShopKeys);
     await writeState(state);
     await ensureDirs();
-    if (onlyShopKey) {
+    if (cycleInterrupted) {
+      // 本轮被「停止当前检测」中止，结果不完整：不用部分数据覆盖结果文件（否则未跑店铺会从页面消失），
+      // 保留上一完整轮数据；已跑店铺的异常已照常报警、health 已更新进 state。
+      await log('info', '本轮检测已被中止，结果文件保留上一轮完整数据（不覆盖）。');
+    } else if (onlyShopKey) {
       // 单店铺检测：与上一轮全量结果合并，只替换本店铺的汇总和商品结果，其他店铺数据保留。
       let mergedShops = [];
       let mergedResults = [];
@@ -1538,6 +1569,7 @@ async function runCycle(onlyShopKey) {
       if (!Array.isArray(history)) history = [];
       history.push({
         time: localNow(),
+        interrupted: cycleInterrupted,
         shops: shops.length,
         results: allResults.length,
         anomalies: anomalyTotal,
@@ -1580,7 +1612,7 @@ async function daemon() {
     // 网页管理端点了「停止检测」：跳过自动巡检，每 5 秒检查一次是否恢复。
     if (isMonitorPaused()) {
       if (!pauseLogged) {
-        await log('info', '监控已被网页管理端暂停（存在 data/monitor-paused.flag）。自动检测已停止，点「恢复检测」后继续。');
+        await log('info', '监控已被网页管理端关闭定时检测（存在 data/monitor-paused.flag）。自动检测已停止，点「开启定时检测」后继续。');
         pauseLogged = true;
       }
       // 暂停期间没有轮次在跑：若残留「停止当前检测」指令则清除（该指令只对运行中的轮次有效）。
@@ -1673,9 +1705,6 @@ async function daemon() {
   await log('info', '淘宝/天猫多店铺活动异常监控服务已停止。');
 }
 
-process.on('SIGTERM', () => { stopRequested = true; });
-process.on('SIGINT', () => { stopRequested = true; });
-
 // 支持 node monitor.js --once --shop=<店铺编号> 只检测单个店铺（网页管理端「检测此店铺」/「立即检测一次」用）。
 // 单实例规则：启动前必须先拿到检测互斥锁；定时检测正在跑时拒绝启动；结束后写 manual-done 供定时重排。
 // --once 也要输出本轮耗时，与 daemon 轮的「本轮检测耗时 X 秒」保持一致，避免手动检测看不到耗时。
@@ -1706,7 +1735,7 @@ if (process.argv.includes('--once')) {
     const lockOk = await acquireDetectLock('manual', onlyShopKey);
     if (!lockOk) {
       const holder = readDetectLock();
-      const msg = `[REFUSED] 手动检测被拒绝：${holder && holder.type === 'daemon' ? '定时检测正在进行' : '已有手动检测正在进行'}（PID ${holder ? holder.pid : '?'}）。请等待其结束后再试，或先在网页管理端点「停止自动检测」再手动检测。`;
+      const msg = `[REFUSED] 手动检测被拒绝：${holder && holder.type === 'daemon' ? '定时检测正在进行' : '已有手动检测正在进行'}（PID ${holder ? holder.pid : '?'}）。请等待其结束后再试，或先在网页管理端点「关闭定时检测」再手动检测。`;
       console.log(msg);
       process.exit(2);
     }

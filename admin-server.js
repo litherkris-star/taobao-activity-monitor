@@ -296,8 +296,10 @@ function pidAlive(pid) {
   if (!Number.isFinite(n) || n <= 0) return false;
   try {
     const out = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${n} -ErrorAction SilentlyContinue) -ne $null`], { encoding: 'utf8', timeout: 8000, windowsHide: true });
-    return out.stdout && /^True$/i.test(String(out.stdout).trim());
-  } catch (_) { return false; }
+    // 查询失败（powershell 启动失败/超时，status 非 0）：保守视为存活，避免误判后放行手动检测造成并发（宁可拒绝，不可并发触发风控）。
+    if (out.error || out.status !== 0) return true;
+    return /^True$/i.test(String(out.stdout).trim());
+  } catch (_) { return true; }
 }
 
 function runOnce(shopKey) {
@@ -312,7 +314,7 @@ function runOnce(shopKey) {
       resolve({
         ok: false,
         output: holder.type === 'daemon'
-          ? '定时自动检测正在进行，手动检测被拒绝（定时 45 分钟优先）。请等待本轮结束，或先在网页管理端点「停止自动检测」后再手动检测。'
+          ? '定时自动检测正在进行，手动检测被拒绝（定时 45 分钟优先）。请等待本轮结束，或先在网页管理端点「关闭定时检测」后再手动检测。'
           : '已有一次手动检测正在进行，本次被拒绝。请等待其结束，或先取消当前手动检测。',
       });
       return;
@@ -951,7 +953,7 @@ const mainHandler = async (req, res) => {
       return;
     }
     // 停止当前检测轮次（无论定时还是手动正在跑）：写入中止指令（运行中的轮次在下一个店铺检查点中断），
-    // 若有手动子进程同时 SIGTERM 让它清理退出。与「停止自动检测」（暂停定时调度）语义不同。
+    // 若有手动子进程同时 SIGTERM 让它清理退出。与「关闭定时检测」（暂停定时调度）语义不同。
     if (req.method === 'POST' && url.pathname === '/api/cycle/stop') {
       fs.mkdirSync(path.dirname(STOP_CYCLE_FLAG_PATH), { recursive: true });
       fs.writeFileSync(STOP_CYCLE_FLAG_PATH, `stop at ${new Date().toISOString()}\n`, 'utf8');

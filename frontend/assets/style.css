@@ -154,7 +154,7 @@
   .btn-danger-strong { background: #e5484d; color: #fff; border: 1.5px solid #e5484d; }
   .btn-danger-strong:hover { background: #c0392b; color: #fff; border-color: #c0392b; }
   .btn-mini { padding: 4px 10px; font-size: 12px; border-radius: 5px; }
-  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  button[disabled], .btn[disabled] { opacity: .5; cursor: not-allowed; }
   .btn-primary, .btn-detect { position: relative; overflow: hidden; }
   .btn-primary::after, .btn-detect::after {
     content: ''; position: absolute; top: 0; left: -70%; width: 45%; height: 100%;
