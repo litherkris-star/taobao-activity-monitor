@@ -1234,15 +1234,20 @@ server.on('error', (error) => {
 });
 
 // 外网入口端口（花名拦截）：config.interceptPort 默认 3081，监听 0.0.0.0 供内网穿透指向；局域网访问主端口不受影响。
-const interceptPort = Number(readConfig().interceptPort || 3081);
-const interceptServer = http.createServer(interceptHandler);
-interceptServer.listen(interceptPort, '0.0.0.0', () => {
-  console.log(`外网入口（花名拦截）已启动：http://0.0.0.0:${interceptPort}（供内网穿透指向；局域网访问主端口 ${PORT} 免拦截）`);
-});
-interceptServer.on('error', (error) => {
-  if (error && error.code === 'EADDRINUSE') {
-    console.error(`外网入口端口 ${interceptPort} 已被占用，拦截入口未启动（可改 config.json 的 interceptPort）。`);
-  } else {
-    console.error('外网入口启动失败：' + (error && error.message ? error.message : String(error)));
-  }
-});
+// 设为 0 或删除即不启动拦截入口（当前走零信任+局域网方案，公网入口已关闭）。
+const interceptPort = Number(readConfig().interceptPort || 0);
+if (interceptPort > 0) {
+  const interceptServer = http.createServer(interceptHandler);
+  interceptServer.listen(interceptPort, '0.0.0.0', () => {
+    console.log(`外网入口（花名拦截）已启动：http://0.0.0.0:${interceptPort}（供内网穿透指向；局域网访问主端口 ${PORT} 免拦截）`);
+  });
+  interceptServer.on('error', (error) => {
+    if (error && error.code === 'EADDRINUSE') {
+      console.error(`外网入口端口 ${interceptPort} 已被占用，拦截入口未启动（可改 config.json 的 interceptPort）。`);
+    } else {
+      console.error('外网入口启动失败：' + (error && error.message ? error.message : String(error)));
+    }
+  });
+} else {
+  console.log('外网入口（花名拦截）未启用（config.interceptPort 未配置），仅局域网端口 ' + PORT + ' 免拦截访问。');
+}
