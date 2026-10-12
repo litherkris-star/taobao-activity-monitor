@@ -10,6 +10,19 @@ function hashColor(name) {
   for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 997;
   return h % 4;
 }
+// 汇总数字滚动动画（0 → 目标值，缓出 700ms）
+function animateNumber(el, target) {
+  const duration = 700;
+  const start = performance.now();
+  function tick(now) {
+    const p = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(target * eased);
+    if (p < 1) requestAnimationFrame(tick);
+    else el.textContent = String(target);
+  }
+  requestAnimationFrame(tick);
+}
 
 async function api(path, options, retried) {
   options = options || {};
@@ -207,10 +220,18 @@ function showBoardReport(idx) {
 
 function switchTab(tab) {
   document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-  document.getElementById('pageShops').classList.toggle('hidden', tab !== 'shops');
-  document.getElementById('pageStatus').classList.toggle('hidden', tab !== 'status');
-  document.getElementById('pageAlerts').classList.toggle('hidden', tab !== 'alerts');
-  document.getElementById('pageBoard').classList.toggle('hidden', tab !== 'board');
+  const pageMap = { status: 'pageStatus', board: 'pageBoard', shops: 'pageShops', alerts: 'pageAlerts' };
+  Object.entries(pageMap).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    const isActive = key === tab;
+    el.classList.toggle('hidden', !isActive);
+    if (isActive) {
+      // 重新触发页面进入动画（先移除强制 reflow 再添加）
+      el.classList.remove('page-enter');
+      void el.offsetWidth;
+      el.classList.add('page-enter');
+    }
+  });
   document.getElementById('pageTitle').textContent = PAGE_TITLES[tab] || '';
   const saveState = document.getElementById('saveState');
   saveState.style.display = tab === 'shops' ? '' : 'none';
@@ -896,10 +917,11 @@ function renderResultGroups(results) {
       const bb = (b.isAnomaly || b.error) ? 0 : 1;
       return aa - bb;
     });
-    // 有异常（商品或店铺错误）默认展开，正常店铺默认收起
+    // 有异常（商品或店铺错误）默认展开，正常店铺默认收起；异常店铺组加炫酷警示样式
     const defaultCollapsed = (anomalyCount === 0 && !meta.error) ? ' collapsed' : '';
+    const alarmGroup = (anomalyCount > 0 || meta.error) ? ' alarm-group' : '';
     return `
-      <div class="shop-group">
+      <div class="shop-group${alarmGroup}">
         <div class="shop-group-head${defaultCollapsed}" onclick="toggleShopGroup(this)">
           <span class="arrow">▼</span>
           <strong>${esc(group.name)}</strong>
@@ -912,7 +934,7 @@ function renderResultGroups(results) {
             <thead><tr><th>商品ID</th><th>商品标题</th><th>活动名称</th><th>负责人</th><th>状态</th></tr></thead>
             <tbody>
               ${sorted.map((r) => `
-                <tr${(r.isAnomaly || r.error) ? ' style="background:#fdf1f1;"' : ''}>
+                <tr${(r.isAnomaly || r.error) ? ' class="tr-alarm"' : ''}>
                   <td>${esc(r.productId)}</td>
                   <td>${esc(r.productName)}</td>
                   <td>${esc(r.activityName || r.activityTitle || '')}</td>
@@ -952,12 +974,14 @@ async function loadResults() {
     const summaryHtml = `
       <div class="stat-grid">
         <div class="stat-cell"><div class="k">最近检测时间</div><div class="v" style="font-size:15px;font-weight:500;">${esc(results.time || '')}</div></div>
-        <div class="stat-cell"><div class="k">店铺总数</div><div class="v">${shops.length}</div></div>
-        <div class="stat-cell"><div class="k">正常</div><div class="v green">${okCount}</div></div>
-        <div class="stat-cell"><div class="k">异常</div><div class="v red">${shopErrors.length}</div></div>
+        <div class="stat-cell"><div class="k">店铺总数</div><div class="v"><span class="num" data-count="${shops.length}">0</span></div></div>
+        <div class="stat-cell"><div class="k">正常</div><div class="v green"><span class="num" data-count="${okCount}">0</span></div></div>
+        <div class="stat-cell"><div class="k">异常</div><div class="v red${shopErrors.length ? ' num-alarm' : ''}"><span class="num" data-count="${shopErrors.length}">0</span></div></div>
       </div>
       ${shopErrors.length ? `<div style="margin-bottom:14px;padding:12px 16px;background:#fdecec;border-radius:8px;font-size:12px;line-height:1.8;color:#c0392b;">${shopErrors.map((s) => `<div><b>${esc(s.name)}</b>：${esc(s.error)}</div>`).join('')}</div>` : ''}`;
     document.getElementById('resultSummary').innerHTML = summaryHtml;
+    // 汇总数字滚动动画
+    document.querySelectorAll('#resultSummary .num[data-count]').forEach((el) => animateNumber(el, Number(el.dataset.count) || 0));
     renderResultGroups(results);
   } catch (error) {
     document.getElementById('resultSummary').innerHTML = `<div class="empty">加载失败：${esc(error.message)}</div>`;

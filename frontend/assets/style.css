@@ -172,3 +172,135 @@
     .content { padding: 16px 14px 60px; }
   }
   /* 检测总览内容平铺，无需二级导航 */
+
+  /* ================= 动画与微交互层（浅色为主 + 局部炫酷） ================= */
+  /* 系统偏好减少动画时全部降级为静态 */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+
+  /* ---- 页面切换：淡入 + 轻微上移 ---- */
+  @keyframes pageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .page-enter { animation: pageIn .4s ease-out both; }
+
+  /* ---- 卡片进入：逐卡微错开 ---- */
+  @keyframes cardIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  .content .card { animation: cardIn .45s cubic-bezier(.22, .9, .28, 1) both; }
+  .content .card:nth-child(2) { animation-delay: .06s; }
+  .content .card:nth-child(3) { animation-delay: .12s; }
+  .content .card:nth-child(4) { animation-delay: .18s; }
+  .content .card:nth-child(5) { animation-delay: .24s; }
+  .content .card:nth-child(6) { animation-delay: .3s; }
+  .content .card:nth-child(7) { animation-delay: .36s; }
+  .content .card:nth-child(n+8) { animation-delay: .4s; }
+
+  /* ---- 卡片悬浮：轻微上浮 + 柔和阴影 ---- */
+  .card { transition: transform .25s ease, box-shadow .25s ease; }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(20, 40, 80, .1); }
+  .shop-card { transition: transform .25s ease, box-shadow .25s ease; }
+  .shop-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(20, 40, 80, .1); }
+
+  /* ---- 按钮：按下缩放 + 主按钮流光扫过 ---- */
+  button { transition: transform .15s ease, box-shadow .2s ease, background .2s ease, color .2s; }
+  button:active { transform: scale(.96); }
+  .btn-primary, .btn-detect { position: relative; overflow: hidden; }
+  .btn-primary::after, .btn-detect::after {
+    content: ''; position: absolute; top: 0; left: -70%; width: 45%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .4), transparent);
+    transform: skewX(-20deg); pointer-events: none;
+  }
+  .btn-primary:hover::after, .btn-detect:hover::after { animation: btnShine .85s ease; }
+  @keyframes btnShine { to { left: 130%; } }
+
+  /* ---- 导航：下划线流动 + 激活光条 ---- */
+  .nav-item { position: relative; transition: background .25s ease, color .25s ease, padding-left .25s ease; }
+  .nav-item::after {
+    content: ''; position: absolute; left: 20px; right: 20px; bottom: 6px; height: 2px;
+    background: linear-gradient(90deg, #4f9cf7, #8fc0ff); border-radius: 2px;
+    transform: scaleX(0); transform-origin: left; transition: transform .3s ease;
+  }
+  .nav-item:hover::after { transform: scaleX(.6); }
+  .nav-item.active::after { transform: scaleX(1); }
+  .nav-item.active { border-left-color: #4f9cf7; }
+  .nav-item .ico { transition: transform .25s ease; }
+  .nav-item:hover .ico { transform: scale(1.15) translateX(2px); }
+
+  /* ---- 品牌标题：流光文字 ---- */
+  .sidebar .brand h1 {
+    background: linear-gradient(90deg, #fff, #9fc6ff, #7fb2ff, #fff);
+    background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: brandFlow 7s linear infinite;
+  }
+  @keyframes brandFlow { to { background-position: -220% 0; } }
+
+  /* ---- 汇总统计：悬浮 + 异常数字呼吸 ---- */
+  .stat-cell { transition: transform .2s ease, box-shadow .2s ease; }
+  .stat-cell:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(20, 40, 80, .09); }
+  .stat-cell .v { transition: color .3s ease; }
+  .v.red.num-alarm { animation: numBreath 2.2s ease-in-out infinite; }
+  @keyframes numBreath {
+    0%, 100% { text-shadow: 0 0 0 rgba(192, 57, 43, 0); }
+    50% { text-shadow: 0 0 12px rgba(192, 57, 43, .55); }
+  }
+
+  /* ---- 店铺分组：异常店铺呼吸光晕 + 警示渐变头 ---- */
+  @keyframes alarmBreath {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, .16); border-color: #f3c1bc; }
+    50% { box-shadow: 0 0 0 5px rgba(192, 57, 43, .05); }
+  }
+  .shop-group.alarm-group { border-color: #f3c1bc; animation: alarmBreath 2.6s ease-in-out infinite; }
+  .shop-group.alarm-group .shop-group-head {
+    background: linear-gradient(90deg, #fdf1f1 0%, #f8fafc 55%);
+    border-left: 4px solid #e14b4b;
+  }
+  .shop-group.alarm-group .shop-group-head strong { color: #c0392b; }
+
+  /* ---- 异常商品行：轻微呼吸底色 + 左侧警示条 ---- */
+  @keyframes rowPulse { 0%, 100% { background: #fdf1f1; } 50% { background: #fdecec; } }
+  tr.tr-alarm { position: relative; animation: rowPulse 3s ease-in-out infinite; }
+  tr.tr-alarm td:first-child { box-shadow: inset 3px 0 0 #e14b4b; }
+
+  /* ---- 日志/列表行：淡入 + 轻微右移，逐行错开 ---- */
+  @keyframes rowIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  .log-item, .op-item { animation: rowIn .3s ease both; }
+  .log-item:nth-child(2n), .op-item:nth-child(2n) { animation-delay: .03s; }
+  .log-item:nth-child(3n), .op-item:nth-child(3n) { animation-delay: .06s; }
+
+  /* ---- 弹窗：缩放弹入 + 遮罩淡入 ---- */
+  @keyframes maskIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal-mask { animation: maskIn .2s ease both; }
+  @keyframes modalIn { from { opacity: 0; transform: scale(.92) translateY(12px); } to { opacity: 1; transform: none; } }
+  .modal { animation: modalIn .3s cubic-bezier(.2, .9, .3, 1.15) both; }
+
+  /* ---- 保存提示：弹性滑入 ---- */
+  @keyframes toastIn {
+    0% { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(.94); }
+    60% { opacity: 1; transform: translateX(-50%) translateY(3px) scale(1.03); }
+    100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  }
+  .save-toast.show { animation: toastIn .4s ease; }
+
+  /* ---- 开关：滑块动画 ---- */
+  .switch-box input {
+    appearance: none; -webkit-appearance: none; width: 36px; height: 19px; border-radius: 10px;
+    background: #cfd6df; position: relative; cursor: pointer; flex-shrink: 0;
+    transition: background .25s ease;
+  }
+  .switch-box input::before {
+    content: ''; position: absolute; top: 2.5px; left: 2.5px; width: 14px; height: 14px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+    transition: transform .25s cubic-bezier(.3, 1.4, .5, 1);
+  }
+  .switch-box input:checked { background: #16a34a; }
+  .switch-box input:checked::before { transform: translateX(17px); }
+  .switch-box input:checked + span { color: #16a34a; font-weight: 600; }
+  .switch-box input:not(:checked) + span { color: #aaa; }
+
+  /* ---- 表格行 hover 过渡 ---- */
+  tbody tr { transition: background .18s ease; }
+
+  /* ---- 滚动条美化（细条，配合浅色） ---- */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #ccd4de; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #b3bdcb; }
+  ::-webkit-scrollbar-track { background: transparent; }
