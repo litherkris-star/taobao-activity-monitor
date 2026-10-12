@@ -317,13 +317,17 @@ function runOnce(shopKey) {
     }
     runOnceBusy = true;
     runOnceCancelled = false;
+    let runOnceTimedOut = false;
     const args = [path.join(ROOT, 'monitor.js'), '--once'];
     if (shopKey) args.push(`--shop=${shopKey}`);
     const child = spawn(process.execPath, args, { cwd: ROOT });
     runOnceChild = child;
     let output = '';
     const timer = setTimeout(() => {
+      runOnceTimedOut = true;
+      // 先 SIGTERM 让手动检测进程写 manual-done 并释放互斥锁（daemon 不会死等），10 秒后仍存活再强杀。
       try { child.kill(); } catch (_) {}
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 10000);
     }, 10 * 60 * 1000);
     child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
     child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
@@ -333,6 +337,10 @@ function runOnce(shopKey) {
       runOnceChild = null;
       if (runOnceCancelled) {
         resolve({ ok: false, cancelled: true, output: '手动检测已被取消。' });
+        return;
+      }
+      if (runOnceTimedOut) {
+        resolve({ ok: false, output: '手动检测超过 10 分钟未完成，已强制结束。' + (output ? '\n' + output.slice(-2000) : '') });
         return;
       }
       // 子进程 acquire 失败（如竞态窗口）会输出 [REFUSED] 并以退出码 2 结束。
@@ -355,9 +363,12 @@ function runOnce(shopKey) {
 function cancelRunOnce() {
   if (!runOnceBusy || !runOnceChild) return false;
   runOnceCancelled = true;
+  // 先发 SIGTERM：手动检测进程收到后会同步写 manual-done 结束标记并释放互斥锁再退出，
+  // 这样定时（daemon）等待手动结束时不会死等。10 秒后若仍存活再 SIGKILL 兜底。
   try { runOnceChild.kill(); } catch (_) {}
-  // Windows 上 kill 可能只结束 node 主进程，兜底再发一次强杀。
-  try { runOnceChild.kill('SIGKILL'); } catch (_) {}
+  setTimeout(() => {
+    try { runOnceChild.kill('SIGKILL'); } catch (_) {}
+  }, 10000);
   return true;
 }
 

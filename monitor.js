@@ -331,15 +331,12 @@ async function markManualDone() {
   await fsp.mkdir(DATA_DIR, { recursive: true }).catch(() => {});
   await fsp.writeFile(MANUAL_DONE_PATH, JSON.stringify({ doneAt: localNow(), ts: Date.now() }, null, 2), 'utf8').catch(() => {});
 }
-// 等待辅助：分段 sleep，期间响应 stopRequested / 暂停 / 手动结束重排。
-async function waitUntilTarget(targetAt, logLabel) {
-  let elapsed = 0;
+// 等待辅助：分段 sleep，期间响应 stopRequested / 暂停；返回 true=等到目标时间，false=被暂停/停止打断。
+async function waitUntilTarget(targetAt) {
   while (!stopRequested && !isMonitorPaused()) {
     const leftMs = Math.max(0, targetAt - Date.now());
     if (leftMs <= 0) return true;
-    const step = Math.min(5000, leftMs);
-    await new Promise((resolve) => setTimeout(resolve, step));
-    elapsed += step;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(5000, leftMs)));
   }
   return false;
 }
@@ -1590,11 +1587,22 @@ async function daemon() {
     if (!lockOk) {
       const holder = readDetectLock();
       await log('warn', `本轮定时检测与手动检测冲突（手动检测 PID ${holder ? holder.pid : '?'} 正在进行），本轮跳过；手动检测结束后 ${Math.round(baseMs / 60000)} 分钟自动执行下一轮。`);
+      const waitStartAt = Date.now();
+      const MAX_WAIT_MS = 30 * 60 * 1000; // 手动检测单轮通常几分钟到十几分钟；30 分钟兜底防取消后写不到结束标记导致死等
       let targetAt = 0;
       while (!stopRequested && !isMonitorPaused() && !targetAt) {
         const manualDone = await readManualDone();
-        if (manualDone && manualDone.ts) targetAt = manualDone.ts + baseMs;
-        else await new Promise((resolve) => setTimeout(resolve, 5000));
+        // 只认本次等待开始前后完成的手动检测，避免读到上一轮残留的旧 manual-done。
+        if (manualDone && manualDone.ts && manualDone.ts > waitStartAt - 60000) {
+          targetAt = manualDone.ts + baseMs;
+          break;
+        }
+        if (Date.now() - waitStartAt > MAX_WAIT_MS) {
+          await log('warn', '等待手动检测结束超过 30 分钟（可能手动检测被强制取消未写结束标记），按当前时间重新排期。');
+          targetAt = Date.now() + baseMs;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
       if (stopRequested || isMonitorPaused()) continue;
       const leftMs = Math.max(0, targetAt - Date.now());
@@ -1606,28 +1614,29 @@ async function daemon() {
     }
 
     const cycleStartAt = Date.now();
-    await runCycle();
-    await releaseDetectLock();
+    try {
+      await runCycle();
+    } finally {
+      await releaseDetectLock();
+    }
     const cycleElapsedSec = Math.round((Date.now() - cycleStartAt) / 1000);
     await log('info', `本轮检测耗时 ${cycleElapsedSec} 秒，下次检测将在 ${Math.round(baseMs / 60000)} 分钟后执行。`);
-    // 等待期：若期间有手动检测完成，以「手动结束 + interval」重新排期（早于原计划则提前，晚于则延后）。
+    // 等待期：若期间有手动检测完成，以「手动结束 + interval」重新排期（无论早于还是晚于原计划，
+    // 一律以手动结束时间为准，避免手动结束后很快又触发检测增加风控概率）。
     let targetAt = Date.now() + baseMs;
-    let reScheduled = false;
+    let lastManualTs = 0;
     while (!stopRequested && !isMonitorPaused()) {
       const manualDone = await readManualDone();
-      if (manualDone && manualDone.ts && manualDone.ts > cycleStartAt) {
-        const reTarget = manualDone.ts + baseMs;
-        if (reTarget < targetAt) {
-          targetAt = reTarget;
-          reScheduled = true;
-          await log('info', `本轮期间完成了手动检测（结束 ${manualDone.doneAt}），下次检测提前至 ${Math.max(0, Math.round((targetAt - Date.now()) / 60000))} 分钟后（按手动结束 + ${Math.round(baseMs / 60000)} 分钟排期）。`);
-        }
+      if (manualDone && manualDone.ts && manualDone.ts > cycleStartAt && manualDone.ts !== lastManualTs) {
+        lastManualTs = manualDone.ts;
+        targetAt = manualDone.ts + baseMs;
+        await log('info', `本轮期间完成了手动检测（结束 ${manualDone.doneAt}），下次检测按手动结束 + ${Math.round(baseMs / 60000)} 分钟排期，${Math.max(0, Math.round((targetAt - Date.now()) / 60000))} 分钟后执行。`);
       }
       if (Date.now() >= targetAt) break;
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
-    if (reScheduled && Date.now() < targetAt) await waitUntilTarget(targetAt);
   }
+  await releaseDetectLock();
   await log('info', '淘宝/天猫多店铺活动异常监控服务已停止。');
 }
 
@@ -1638,6 +1647,20 @@ process.on('SIGINT', () => { stopRequested = true; });
 // 单实例规则：启动前必须先拿到检测互斥锁；定时检测正在跑时拒绝启动；结束后写 manual-done 供定时重排。
 // --once 也要输出本轮耗时，与 daemon 轮的「本轮检测耗时 X 秒」保持一致，避免手动检测看不到耗时。
 if (process.argv.includes('--once')) {
+  // 取消手动检测（网页管理端「取消检测」按钮）时：SIGTERM/SIGINT 到达即同步清理（写结束标记 + 释放锁）再退出，
+  // 否则 daemon 会一直等不到 manual-done 而挂起等待。
+  const cleanupOnSignal = () => {
+    try {
+      fs.writeFileSync(MANUAL_DONE_PATH, JSON.stringify({ doneAt: new Date().toLocaleString('zh-CN', { hour12: false }), ts: Date.now() }, null, 2), 'utf8');
+    } catch (_) {}
+    try {
+      const l = readDetectLock();
+      if (l && Number(l.pid) === process.pid) fs.unlinkSync(DETECT_LOCK_PATH);
+    } catch (_) {}
+    process.exit(0);
+  };
+  process.on('SIGTERM', cleanupOnSignal);
+  process.on('SIGINT', cleanupOnSignal);
   const shopArg = process.argv.find((arg) => arg.startsWith('--shop='));
   const onlyShopKey = shopArg ? String(shopArg.slice('--shop='.length)).trim() : '';
   const startAt = Date.now();
@@ -1663,5 +1686,7 @@ if (process.argv.includes('--once')) {
     process.exit(exitCode);
   })();
 } else {
+  process.on('SIGTERM', () => { stopRequested = true; });
+  process.on('SIGINT', () => { stopRequested = true; });
   daemon().catch(async (error) => { await log('error', error.stack || String(error)); process.exit(1); });
 }
