@@ -813,8 +813,8 @@ const OP_COLORS = {
   '导入配置': '#0f8f6f',
   '恢复超级立减网址': '#b7791f',
 };
-// 店铺调色板：按店铺出现顺序分配颜色（同一店铺颜色稳定，不同店铺不重复）
-const SHOP_PALETTE = ['#3370ff', '#00a870', '#722ed1', '#d48806', '#eb2f96', '#13c2c2', '#fa8c16', '#2f54eb', '#a0d911', '#531dab'];
+// 店铺调色板：按店铺出现顺序分配颜色（同一店铺颜色稳定，不同店铺不重复；全部避开红色系，红色留给错误/删除）
+const SHOP_PALETTE = ['#3370ff', '#00a870', '#722ed1', '#d48806', '#13a8a8', '#13c2c2', '#fa8c16', '#2f54eb', '#a0d911', '#531dab'];
 const shopColorMap = new Map();
 let shopColorCursor = 0;
 function shopColor(name) {

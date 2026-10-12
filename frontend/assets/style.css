@@ -116,6 +116,7 @@
     width: 100%; background: #fbfcfe; color: #334155;
     transition: border-color .2s ease, box-shadow .2s ease;
   }
+  #operatorInput { width: 140px; padding: 6px 10px; }
   input::placeholder, textarea::placeholder { color: #9db0c9; }
   input:focus, select:focus, textarea:focus {
     outline: none; border-color: #2563eb;
@@ -137,7 +138,7 @@
   .btn-primary {
     background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff;
     box-shadow: 0 3px 12px rgba(37, 99, 235, .3);
-    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+    /* 不使用 clip-path 切角：切角会裁掉 box-shadow 与 hover 能量光环 */
   }
   .btn-primary:hover { background: linear-gradient(135deg, #2f6ef0, #2456e8); box-shadow: 0 4px 16px rgba(37, 99, 235, .42); }
   .btn-plain { background: #fff; color: #4a607f; border: 1.5px solid #cdd8e8; }

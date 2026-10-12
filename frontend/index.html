@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-<!-- 机甲氛围装饰（角标/扫描线，纯视觉不参与交互） -->
+<!-- 机甲氛围装饰（四角角标，纯视觉不参与交互） -->
 <div class="mecha-bg" aria-hidden="true">
   <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
 </div>
@@ -32,7 +32,7 @@
       <span class="page-title" id="pageTitle">检测总览</span>
       <span id="saveState" class="muted" style="display:none"></span>
       <span class="spacer"></span>
-      <select id="operatorInput" title="选择花名（操作人），操作日志会记录操作人；未选择花名不能保存修改" style="width:140px;padding:6px 10px;border:1px solid #d9dde3;border-radius:8px;font-size:13px;outline:none;background:#fff;" onchange="saveOperator()"><option value="" disabled selected hidden>请选择花名</option></select>
+      <select id="operatorInput" title="选择花名（操作人），操作日志会记录操作人；未选择花名不能保存修改" onchange="saveOperator()"><option value="" disabled selected hidden>请选择花名</option></select>
       <button class="btn-primary" onclick="saveAll()">保存全部修改</button>
       <button class="btn-plain" onclick="document.getElementById('fileInput').click()">导入Excel</button>
       <button class="btn-plain" onclick="downloadTemplate()">下载导入模板</button>
