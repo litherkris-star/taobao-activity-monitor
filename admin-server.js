@@ -8,7 +8,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const ROOT = __dirname;
 const CONFIG_PATH = process.env.TB_CONFIG || path.join(ROOT, 'config.json');
@@ -280,23 +280,43 @@ function checkDaemonMonitor() {
   });
 }
 
+// 检测互斥锁：定时（daemon）与手动（--once）检测共用一个文件锁（见 monitor.js）。
+// 手动检测启动前先查锁：定时检测正在跑 → 拒绝启动（定时 45 分钟优先），不 spawn 子进程。
+const DETECT_LOCK_PATH = path.join(ROOT, 'data', 'detect-lock.json');
+function detectLockHolder() {
+  try {
+    const lock = JSON.parse(fs.readFileSync(DETECT_LOCK_PATH, 'utf8'));
+    return lock && lock.pid ? { pid: lock.pid, type: lock.type } : null;
+  } catch (_) { return null; }
+}
+function pidAlive(pid) {
+  const n = Number(pid);
+  if (!Number.isFinite(n) || n <= 0) return false;
+  try {
+    const out = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${n} -ErrorAction SilentlyContinue) -ne $null`], { encoding: 'utf8', timeout: 8000, windowsHide: true });
+    return out.stdout && /^True$/i.test(String(out.stdout).trim());
+  } catch (_) { return false; }
+}
+
 function runOnce(shopKey) {
   return new Promise((resolve) => {
     if (runOnceBusy) {
       resolve({ ok: false, output: '上一次手动检测还在运行，请稍候。' });
       return;
     }
+    // 单实例互斥：定时检测正在跑（锁被 daemon 持有且进程存活）→ 拒绝启动，不拉起子进程。
+    const holder = detectLockHolder();
+    if (holder && pidAlive(holder.pid)) {
+      resolve({
+        ok: false,
+        output: holder.type === 'daemon'
+          ? '定时自动检测正在进行，手动检测被拒绝（定时 45 分钟优先）。请等待本轮结束，或先在网页管理端点「停止自动检测」后再手动检测。'
+          : '已有一次手动检测正在进行，本次被拒绝。请等待其结束，或先取消当前手动检测。',
+      });
+      return;
+    }
     runOnceBusy = true;
     runOnceCancelled = false;
-    const resolveExtra = {};
-    // 并发提示：常驻自动巡检若在运行（且未暂停），手动检测会与其并发，提前告知用户。
-    checkDaemonMonitor().then((daemonPid) => {
-      const concurrent = Boolean(daemonPid) && !fs.existsSync(PAUSE_FLAG_PATH);
-      resolveExtra.concurrent = concurrent;
-      resolveExtra.monitorHint = concurrent
-        ? `自动巡检进程（PID ${daemonPid}）也在运行：本轮手动检测与其并发，Chrome 标签页与结果文件可能互相影响，完成后以最后写入的结果为准。`
-        : '';
-    }).catch(() => {});
     const args = [path.join(ROOT, 'monitor.js'), '--once'];
     if (shopKey) args.push(`--shop=${shopKey}`);
     const child = spawn(process.execPath, args, { cwd: ROOT });
@@ -315,13 +335,18 @@ function runOnce(shopKey) {
         resolve({ ok: false, cancelled: true, output: '手动检测已被取消。' });
         return;
       }
-      resolve({ ok: code === 0, output: output.slice(-8000), ...resolveExtra });
+      // 子进程 acquire 失败（如竞态窗口）会输出 [REFUSED] 并以退出码 2 结束。
+      if (code === 2 || output.includes('[REFUSED]')) {
+        resolve({ ok: false, output: output.slice(-8000) });
+        return;
+      }
+      resolve({ ok: code === 0, output: output.slice(-8000) });
     });
     child.on('error', (error) => {
       clearTimeout(timer);
       runOnceBusy = false;
       runOnceChild = null;
-      resolve({ ok: false, output: String(error && error.message || error), ...resolveExtra });
+      resolve({ ok: false, output: String(error && error.message || error) });
     });
   });
 }
@@ -908,7 +933,8 @@ const mainHandler = async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/api/run-once') {
       const result = await runOnce();
-      sendJson(res, result.ok ? 200 : 500, result);
+      // 业务拒绝/失败统一返回 200，前端按 result.ok 展示（非 2xx 会触发 fetch throw 吞掉消息）。
+      sendJson(res, 200, result);
       return;
     }
     // 取消正在运行的手动检测。
@@ -937,7 +963,7 @@ const mainHandler = async (req, res) => {
         return;
       }
       const result = await runOnce(shopKey);
-      sendJson(res, result.ok ? 200 : 500, result);
+      sendJson(res, 200, result);
       return;
     }
     // 启动器.html 使用的存活探测接口（兼容保留；顺带返回局域网地址供启动器动态展示）。

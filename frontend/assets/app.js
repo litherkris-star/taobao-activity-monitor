@@ -722,10 +722,15 @@ async function runOnce() {
   el.textContent = '检测中，通常需要几分钟；点「取消检测」可随时中止...';
   try {
     const res = await api('/api/run-once', { method: 'POST' });
-    el.textContent = '检测完成';
-    if (res && res.concurrent && res.monitorHint) {
-      el.textContent = '检测完成（注意：自动巡检进程也在运行，并发时结果以最后写入为准）';
-      setTimeout(() => { el.textContent = '检测完成'; }, 15000);
+    if (res && res.ok === false) {
+      el.textContent = res.output || '手动检测被拒绝';
+      setTimeout(() => { el.textContent = '就绪'; }, 10000);
+    } else {
+      el.textContent = '检测完成';
+      if (res && res.concurrent && res.monitorHint) {
+        el.textContent = '检测完成（注意：自动巡检进程也在运行，并发时结果以最后写入为准）';
+        setTimeout(() => { el.textContent = '检测完成'; }, 15000);
+      }
     }
   } catch (error) {
     el.textContent = /取消/.test(error.message) ? '检测已取消' : '检测结束（有错误，见下方日志）';
@@ -758,7 +763,13 @@ async function runShopDetect(shopKey, btn) {
   btn.textContent = '检测中...';
   try {
     const res = await api('/api/run-shop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopKey }) });
-    alert(res && res.concurrent && res.monitorHint ? '检测完成。注意：自动巡检进程也在运行，两个进程并发时 Chrome 标签页与结果文件可能互相影响，以最后写入的结果为准。' : '检测完成，请到「检测结果」页查看。');
+    if (res && res.ok === false) {
+      alert(res.output || '手动检测被拒绝');
+    } else if (res && res.concurrent && res.monitorHint) {
+      alert('检测完成。注意：自动巡检进程也在运行，两个进程并发时 Chrome 标签页与结果文件可能互相影响，以最后写入的结果为准。');
+    } else {
+      alert('检测完成，请到「检测结果」页查看。');
+    }
   } catch (error) {
     alert('检测结束（有错误）：' + error.message);
   } finally {
