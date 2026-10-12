@@ -428,20 +428,6 @@
     opacity: .9;
   }
 
-  /* --- 页面入场扫描线（切换页面时光带从上往下扫过） --- */
-  .page-enter { position: relative; }
-  .page-enter::before {
-    content: ''; position: absolute; left: 0; right: 0; height: 3px; top: -4px;
-    background: linear-gradient(90deg, transparent, rgba(56, 189, 248, .75), transparent);
-    animation: pageScan .85s ease-out .05s both;
-    pointer-events: none; z-index: 6;
-  }
-  @keyframes pageScan {
-    0% { top: -4px; opacity: 0; }
-    10% { opacity: 1; }
-    100% { top: 106%; opacity: 0; }
-  }
-
   /* --- 侧边导航：激活项斜纹装甲纹理 + 辉光 --- */
   .nav-item.active::after {
     content: ''; position: absolute; inset: 0;
