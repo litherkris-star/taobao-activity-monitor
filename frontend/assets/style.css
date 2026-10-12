@@ -78,6 +78,8 @@
   .shop-tag.c2 { color: #15803d; background: #e6f6ec; }
   .shop-tag.c3 { color: #0f766e; background: #e0f2f1; }
   .log-item .txt { word-break: break-all; }
+  .anomaly-group-title { margin: 10px 0 6px; font-weight: 700; color: #334155; font-size: 13px; }
+  .anomaly-group-title:first-child { margin-top: 0; }
 
   /* ===== 操作日志 ===== */
   .op-log-list { max-height: 260px; overflow: auto; font-size: 12.5px; }

@@ -1173,6 +1173,73 @@ function diffProductAlerts(config, allResults, state, partialKey) {
   return { toAlert, toRecover };
 }
 
+// 异常持续时间记录（信息看板用，简化版）：
+// 本轮发现商品/店铺异常 → 把本轮时间记为「异常开始」写入 state；
+// 下一轮检测不再异常 → 以本轮（恢复轮）时间为「恢复时间」，生成一段 {start ~ end} 记录，
+// 保留最近 40 条供看板展示「持续中」和「已恢复」两种情况。
+function updateAnomalyDurations(state, config, allResults, shopErrors, nowText, onlyShopKey) {
+  const sinceMap = state.productAnomalySince && typeof state.productAnomalySince === 'object' ? state.productAnomalySince : {};
+  const shopSince = state.shopAnomalySince && typeof state.shopAnomalySince === 'object' ? state.shopAnomalySince : {};
+  const recoveries = Array.isArray(state.recentRecoveries) ? state.recentRecoveries : [];
+
+  if (!onlyShopKey) {
+    // 全量检测：清掉已不在店铺集合里的孤儿记录（商品删除/店铺停用后自动清理）
+    const validShopKeys = new Set((config.shops || []).map((s) => s.key));
+    for (const key of Object.keys(sinceMap)) {
+      const shopKey = String(key).split(':')[0];
+      if (!validShopKeys.has(shopKey)) delete sinceMap[key];
+    }
+  }
+
+  // 商品：异常→记开始；恢复→生成持续段
+  for (const item of allResults) {
+    if (!item) continue;
+    const key = `${item.shopKey}:${item.productId}`;
+    if (item.isAnomaly) {
+      if (!sinceMap[key]) sinceMap[key] = nowText;
+    } else if (sinceMap[key]) {
+      const start = sinceMap[key];
+      delete sinceMap[key];
+      recoveries.push({
+        type: 'product',
+        shopKey: item.shopKey,
+        shopName: item.shopName || String(item.shopKey),
+        productId: String(item.productId || ''),
+        title: item.activityTitle || item.title || '',
+        start,
+        end: nowText,
+      });
+    }
+  }
+
+  // 店铺：本轮失败→记开始；成功→结束持续段（瞬时/已自动恢复的失败不在此列，shopErrors 为确认异常）
+  const errorKeys = new Set(shopErrors.map((e) => e.shopKey));
+  for (const shop of config.shops || []) {
+    if (errorKeys.has(shop.key)) {
+      if (!shopSince[shop.key]) shopSince[shop.key] = nowText;
+    } else if (shopSince[shop.key]) {
+      const start = shopSince[shop.key];
+      delete shopSince[shop.key];
+      recoveries.push({
+        type: 'shop',
+        shopKey: shop.key,
+        shopName: shop.name,
+        productId: '',
+        title: '',
+        start,
+        end: nowText,
+      });
+    }
+  }
+
+  // 新记录在前，只保留最近 40 条
+  recoveries.sort((a, b) => String(b.end || '').localeCompare(String(a.end || '')));
+  if (recoveries.length > 40) recoveries.length = 40;
+  state.productAnomalySince = sinceMap;
+  state.shopAnomalySince = shopSince;
+  state.recentRecoveries = recoveries;
+}
+
 // 给异步操作加超时：页面/浏览器操作偶尔永远不返回，没有兜底会把整轮检测卡死。
 function withTimeout(promise, ms, label) {
   let timer = null;
@@ -1374,6 +1441,8 @@ async function runCycle(onlyShopKey) {
     state.lastSuccessAt = Date.now();
     state.lastSuccessText = localNow();
     if (!shopErrors.length) state.lastErrorKey = '';
+    // 异常持续时间记录（信息看板）：本轮异常开始 / 下一轮恢复生成持续段
+    updateAnomalyDurations(state, config, allResults, shopErrors, localNow(), onlyShopKey);
     await writeState(state);
     await ensureDirs();
     if (onlyShopKey) {

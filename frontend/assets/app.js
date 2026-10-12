@@ -4,6 +4,12 @@ const PAGE_TITLES = { status: '检测总览', board: '信息看板', shops: '店
 function esc(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+// 店铺标签色（0-3 稳定映射，蓝/黄/绿/青，避免红色与错误混淆）
+function hashColor(name) {
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  return h % 4;
+}
 
 async function api(path, options, retried) {
   options = options || {};
@@ -210,7 +216,63 @@ function switchTab(tab) {
   saveState.style.display = tab === 'shops' ? '' : 'none';
   if (tab === 'status') { loadResults(); refreshPauseButton(); }
   // 信息看板页：一次性加载服务状态 + 日报 + 操作日志 + 检测趋势（各带自己的刷新按钮）
-  if (tab === 'board') { loadBoard(); loadOperations(); loadHistory(); }
+  if (tab === 'board') { loadBoard(); loadOperations(); loadHistory(); loadAnomalyState(); }
+}
+
+// ===== 信息看板：异常持续记录 =====
+// 时长显示：<60 分钟显示「X 分钟」；≥60 分钟显示「X 小时 Y 分」。
+function durationText(startText, endText) {
+  const t = (new Date(String(endText).replace(' ', 'T')).getTime()) - (new Date(String(startText).replace(' ', 'T')).getTime());
+  if (!Number.isFinite(t) || t < 0) return '';
+  const min = Math.round(t / 60000);
+  if (min < 60) return min + ' 分钟';
+  return Math.floor(min / 60) + ' 小时 ' + (min % 60) + ' 分';
+}
+async function loadAnomalyState() {
+  const box = document.getElementById('boardAnomaly');
+  if (!box) return;
+  try {
+    const data = await api('/api/anomaly-state');
+    renderAnomalyState(data.ongoing || [], data.recoveries || []);
+  } catch (error) {
+    box.innerHTML = `<div class="empty">加载失败：${esc(error.message)}</div>`;
+  }
+}
+function renderAnomalyState(ongoing, recoveries) {
+  const box = document.getElementById('boardAnomaly');
+  const lines = [];
+  // 1) 持续中的异常（商品 + 店铺）
+  if (ongoing.length) {
+    lines.push('<div class="anomaly-group-title">持续中（' + ongoing.length + '）</div>');
+    for (const item of ongoing) {
+      const dur = durationText(item.start, new Date().toLocaleString('zh-CN', { hour12: false }).slice(0, 19).replace(/\//g, '-'));
+      lines.push(`<div class="log-item">
+        <span class="shop-tag c${hashColor(item.shopKey)}">${esc(item.shopName)}</span>
+        <span class="txt">${item.type === 'shop'
+          ? '<b>店铺异常</b>：自 ' + esc(item.start) + ' 异常，已持续 ' + esc(dur)
+          : '商品 ' + esc(item.productId) + (item.title ? '（' + esc(item.title) + '）' : '') + '：自 ' + esc(item.start) + ' 异常，已持续 ' + esc(dur)}</span>
+      </div>`);
+    }
+  }
+  // 2) 最近已恢复的持续段
+  const rec = recoveries.filter((r) => r.start && r.end);
+  if (rec.length) {
+    lines.push('<div class="anomaly-group-title">最近恢复（' + rec.length + '）</div>');
+    for (const item of rec) {
+      const dur = durationText(item.start, item.end);
+      lines.push(`<div class="log-item">
+        <span class="shop-tag c${hashColor(item.shopKey)}">${esc(item.shopName)}</span>
+        <span class="txt">${item.type === 'shop'
+          ? '<b>店铺异常</b>：' + esc(item.start) + ' ~ ' + esc(item.end) + (dur ? '（' + esc(dur) + '）' : '')
+          : '商品 ' + esc(item.productId) + (item.title ? '（' + esc(item.title) + '）' : '') + '：' + esc(item.start) + ' ~ ' + esc(item.end) + (dur ? '（' + esc(dur) + '）' : '')}</span>
+      </div>`);
+    }
+  }
+  if (!lines.length) {
+    box.innerHTML = '<div class="empty">暂无异常持续记录（所有商品/店铺最近均正常）</div>';
+    return;
+  }
+  box.innerHTML = lines.join('');
 }
 
 function addShop() {

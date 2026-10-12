@@ -1144,6 +1144,35 @@ const mainHandler = async (req, res) => {
       sendJson(res, 200, { serviceEvents: serviceEvents.slice(-100), dailyReports });
       return;
     }
+    // 异常持续记录（信息看板）：持续中的商品/店铺异常 + 最近已恢复的持续段
+    if (req.method === 'GET' && url.pathname === '/api/anomaly-state') {
+      let st = {};
+      try { st = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'state.json'), 'utf8')); } catch (_) { st = {}; }
+      const sinceMap = st.productAnomalySince && typeof st.productAnomalySince === 'object' ? st.productAnomalySince : {};
+      const shopSince = st.shopAnomalySince && typeof st.shopAnomalySince === 'object' ? st.shopAnomalySince : {};
+      const recoveries = Array.isArray(st.recentRecoveries) ? st.recentRecoveries : [];
+      // 补充持续中记录的店铺名/商品名（从 config 现查，保证展示友好）
+      const cfg = readConfig();
+      const shopNames = {};
+      const productTitles = {};
+      for (const shop of cfg.shops || []) {
+        shopNames[shop.key] = shop.name;
+        for (const p of shop.products || []) productTitles[`${shop.key}:${p.productId}`] = p.title || p.activityTitle || '';
+      }
+      const ongoing = [];
+      for (const [key, start] of Object.entries(sinceMap)) {
+        const [shopKey, pid] = String(key).split(':');
+        ongoing.push({
+          type: 'product', shopKey, shopName: shopNames[shopKey] || shopKey, productId: pid || '',
+          title: productTitles[key] || '', start,
+        });
+      }
+      for (const [shopKey, start] of Object.entries(shopSince)) {
+        ongoing.push({ type: 'shop', shopKey, shopName: shopNames[shopKey] || shopKey, productId: '', title: '', start });
+      }
+      sendJson(res, 200, { ongoing, recoveries });
+      return;
+    }
     // 导出检测日志（默认最近一小时）
     if (req.method === 'GET' && url.pathname === '/api/export-log') {
       const minutes = Math.max(1, Math.min(1440, Number(url.searchParams.get('minutes') || 60)));

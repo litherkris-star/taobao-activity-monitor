@@ -70,6 +70,10 @@
       <!-- ========== 信息看板（独立页：操作日志 + 服务状态 + 每日日报 + 检测趋势） ========== -->
       <div id="pageBoard" class="hidden">
         <div class="card">
+          <div class="card-head"><b>异常持续记录</b><span class="muted">商品/店铺异常开始与恢复时间（如 11:00 异常 → 11:45 恢复 = 持续 45 分钟）</span><span style="margin-left:auto"></span><button class="btn-plain btn-mini" onclick="loadAnomalyState()">刷新</button></div>
+          <div class="card-body"><div id="boardAnomaly" class="log-list">加载中...</div></div>
+        </div>
+        <div class="card">
           <div class="card-head">
             <b>操作日志</b>
             <span class="muted" id="opCount">保存 / 导入 / 恢复网址等后台操作记录</span>
