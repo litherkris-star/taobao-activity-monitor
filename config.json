@@ -11,7 +11,7 @@
   "browserMode": "builtin",
   "chromeDebugPort": 9222,
   "adminHost": "0.0.0.0",
-  "adminToken": "住宅天猫二组",
+  "adminToken": "",
   "interceptPort": 0,
   "notifyOnError": true,
   "notifyProductRecovery": false,
