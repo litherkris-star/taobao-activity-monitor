@@ -1555,5 +1555,6 @@
   "autoRestartEnabled": true,
   "autoRestartTime": "04:00",
   "dailyReportDingTalk": false,
-  "quietHours": "01:00-06:00"
+  "quietHours": "01:00-06:00",
+  "interceptSecret": "2b55c87f67e5d0fd5c4a700541a2cb712b729c58ebe5f970"
 }

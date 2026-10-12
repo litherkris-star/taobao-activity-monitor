@@ -628,7 +628,88 @@ function applyImport(config, items) {
   return summary;
 }
 
-const server = http.createServer(async (req, res) => {
+// ===== 外网入口拦截（花名验证）=====
+// 局域网端口（默认 3080）不拦截；外网穿透指向 interceptPort（默认 3081），该端口所有请求先过花名校验，
+// 输入正确花名（商品负责人花名，去重自动同步）后签发签名 cookie，之后 7 天内免输。
+const INTERCEPT_COOKIE = 'intercept_token';
+
+function getInterceptSecret() {
+  const cfg = readConfig();
+  if (!cfg.interceptSecret || cfg.interceptSecret.length < 32) {
+    cfg.interceptSecret = require('crypto').randomBytes(24).toString('hex');
+    writeConfig(cfg);
+  }
+  return cfg.interceptSecret;
+}
+
+function signInterceptToken(value, secret) {
+  return require('crypto').createHmac('sha256', secret).update(String(value)).digest('hex');
+}
+
+function parseCookies(req) {
+  const out = {};
+  const raw = String(req.headers.cookie || '');
+  for (const part of raw.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq > 0) out[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
+  }
+  return out;
+}
+
+function interceptAuthorized(req) {
+  const token = parseCookies(req)[INTERCEPT_COOKIE];
+  if (!token) return false;
+  const dot = token.lastIndexOf('.');
+  if (dot <= 0) return false;
+  const value = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const secret = getInterceptSecret();
+  return signInterceptToken(value, secret) === sig && Number(value) > Date.now() - 7 * 24 * 3600 * 1000;
+}
+
+function ownerNameSet() {
+  const cfg = readConfig();
+  const set = new Set();
+  for (const shop of cfg.shops || []) {
+    for (const p of shop.products || []) {
+      const o = String(p.owner || '').trim();
+      if (o) set.add(o);
+    }
+  }
+  return set;
+}
+
+function interceptPageHtml() {
+  const names = [...ownerNameSet()];
+  const hint = names.length ? names.slice(0, 6).join('、') + (names.length > 6 ? ' 等' : '') : '（尚未配置负责人花名，请联系管理员）';
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>请输入花名</title>
+<style>html,body{margin:0;height:100%;font-family:-apple-system,"Microsoft YaHei",sans-serif;background:linear-gradient(135deg,#1e3a5f 0%,#2b6cb0 100%);display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border-radius:16px;padding:40px 44px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.25);text-align:center}
+.logo{font-size:22px;font-weight:700;color:#1e3a5f;margin-bottom:6px}
+.sub{color:#8a94a6;font-size:13px;margin-bottom:26px}
+input{width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #d5dbe5;border-radius:10px;font-size:15px;outline:none;margin-bottom:12px;text-align:center}
+input:focus{border-color:#2b6cb0;box-shadow:0 0 0 3px rgba(43,108,176,.15)}
+button{width:100%;padding:12px;background:#2b6cb0;color:#fff;border:none;border-radius:10px;font-size:15px;cursor:pointer;font-weight:600}
+button:hover{background:#245a96}
+.err{color:#d64541;font-size:13px;margin-top:10px;min-height:18px}
+.hint{color:#9aa5b5;font-size:12px;margin-top:14px}</style></head><body>
+<div class="card">
+  <div class="logo">活动监控 · 外网访问</div>
+  <div class="sub">请输入你的花名后进入</div>
+  <input id="name" placeholder="花名" autocomplete="off" autofocus>
+  <button onclick="submit()">进入</button>
+  <div class="err" id="err"></div>
+  <div class="hint">可进入花名：${hint}</div>
+</div>
+<script>async function submit(){const n=document.getElementById('name').value.trim();const err=document.getElementById('err');if(!n){err.textContent='请输入花名';return;}
+const r=await fetch('/api/intercept-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});
+const j=await r.json().catch(()=>({}));
+if(j.ok){location.reload();}else{err.textContent=j.error||'花名不正确';}}
+document.getElementById('name').addEventListener('keydown',e=>{if(e.key==='Enter')submit();});</script>
+</body></html>`;
+}
+
+const mainHandler = async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   try {
     if (req.method === 'GET' && url.pathname === '/') {
@@ -1090,8 +1171,42 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     sendJson(res, 400, { error: error.message || String(error) });
   }
-});
+};
 
+// 外网入口端口处理：先过花名拦截，通过后复用主 handler。
+const interceptHandler = async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (req.method === 'POST' && url.pathname === '/api/intercept-auth') {
+    let body = {};
+    try { body = JSON.parse((await readBodyBuffer(req)).toString('utf8') || '{}'); } catch (_) {}
+    const name = String(body.name || '').trim();
+    if (!name) return sendJson(res, 400, { error: '请输入花名' });
+    if (!ownerNameSet().has(name)) return sendJson(res, 403, { error: '花名不正确，无法进入' });
+    const secret = getInterceptSecret();
+    const value = String(Date.now());
+    const token = `${value}.${signInterceptToken(value, secret)}`;
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Set-Cookie': `${INTERCEPT_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`,
+    });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+  if (!interceptAuthorized(req)) {
+    // 页面请求返回拦截页；API 请求返回 401（前端轮询会被浏览器拦住，不发数据）。
+    const wantsHtml = String(req.headers.accept || '').includes('text/html') || url.pathname === '/';
+    if (wantsHtml) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(interceptPageHtml());
+    } else {
+      sendJson(res, 401, { error: '未授权，请先在外网入口页输入花名' });
+    }
+    return;
+  }
+  return mainHandler(req, res);
+};
+
+const server = http.createServer(mainHandler);
 server.listen(PORT, HOST, () => {
   console.log(`网页管理后台已启动：http://${HOST}:${PORT}`);
   if (HOST === '0.0.0.0') {
@@ -1116,4 +1231,18 @@ server.on('error', (error) => {
     console.error('admin-server 启动失败：' + (error && error.message ? error.message : String(error)));
   }
   process.exit(1);
+});
+
+// 外网入口端口（花名拦截）：config.interceptPort 默认 3081，监听 0.0.0.0 供内网穿透指向；局域网访问主端口不受影响。
+const interceptPort = Number(readConfig().interceptPort || 3081);
+const interceptServer = http.createServer(interceptHandler);
+interceptServer.listen(interceptPort, '0.0.0.0', () => {
+  console.log(`外网入口（花名拦截）已启动：http://0.0.0.0:${interceptPort}（供内网穿透指向；局域网访问主端口 ${PORT} 免拦截）`);
+});
+interceptServer.on('error', (error) => {
+  if (error && error.code === 'EADDRINUSE') {
+    console.error(`外网入口端口 ${interceptPort} 已被占用，拦截入口未启动（可改 config.json 的 interceptPort）。`);
+  } else {
+    console.error('外网入口启动失败：' + (error && error.message ? error.message : String(error)));
+  }
 });
