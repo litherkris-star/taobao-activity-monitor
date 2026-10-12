@@ -18,8 +18,34 @@ function findMonitorPids() {
   }
 }
 
+// 采样指定 PID 的内存占用（MB）；失败返回 null。
+function memOfPid(pid) {
+  try {
+    const out = execSync(`powershell -NoProfile -Command "(Get-Process -Id ${Number(pid)} -ErrorAction SilentlyContinue).WorkingSet64"`, { encoding: 'utf8', timeout: 10000 }).trim();
+    const n = Number(out);
+    return Number.isFinite(n) && n > 0 ? Math.round(n / 1048576) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function logLine(msg) {
+  const stamp = new Date().toLocaleString('zh-CN', { hour12: false });
+  const line = `[${stamp}] [INFO] [重启脚本] ${msg}`;
+  try { fs.appendFileSync(path.join(ROOT, 'logs', 'monitor.log'), line + '\n', 'utf8'); } catch (_) {}
+  console.log(line);
+}
+
 async function main() {
   const pids = findMonitorPids();
+  const beforeMem = {};
+  let beforeTotal = 0;
+  for (const pid of pids) {
+    const m = memOfPid(pid);
+    beforeMem[pid] = m;
+    if (m != null) beforeTotal += m;
+  }
+  logLine(`每日自动重启开始：停止 ${pids.length} 个 monitor 进程，重启前内存合计 ${beforeTotal}MB${pids.length ? '（' + pids.map((p) => `PID ${p}=${beforeMem[p] ?? '?'}MB`).join(', ') + '）' : ''}`);
   for (const pid of pids) {
     try { process.kill(Number(pid), 'SIGTERM'); } catch (_) {}
   }
@@ -59,6 +85,17 @@ async function main() {
   setTimeout(() => {
     try { fs.unlinkSync(vbsPath); } catch (_) {}
   }, 8000);
+  // 等新进程起来后采样重启后内存，计算释放量。
+  await new Promise((resolve) => setTimeout(resolve, 12000));
+  const newPids = findMonitorPids();
+  let afterTotal = 0;
+  const afterMem = {};
+  for (const pid of newPids) {
+    const m = memOfPid(pid);
+    afterMem[pid] = m;
+    if (m != null) afterTotal += m;
+  }
+  logLine(`每日自动重启完成：新 monitor 内存合计 ${afterTotal}MB${newPids.length ? '（' + newPids.map((p) => `PID ${p}=${afterMem[p] ?? '?'}MB`).join(', ') + '）' : '（未检测到新进程，可能仍在启动）'}；释放内存 ${Math.max(0, beforeTotal - afterTotal)}MB（重启前 ${beforeTotal}MB → 重启后 ${afterTotal}MB）。`);
   console.log('monitor 已重新启动（--delay=45，隐藏窗口，45 分钟后开始第一轮检测）。');
   process.exit(0);
 }
