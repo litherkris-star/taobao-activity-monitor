@@ -755,6 +755,24 @@ async function cancelRun() {
   }
 }
 
+// 停止当前检测轮次（无论定时还是手动正在跑）：中断本轮，剩余店铺跳过；不影响下一轮定时调度。
+// 与「停止自动检测」（暂停整个定时调度）语义不同。
+async function stopCycle() {
+  if (!confirm('确定停止当前正在运行的检测轮次吗？\n\n将中断本轮检测（剩余店铺跳过），不影响下一轮定时自动检测。')) return;
+  const btn = document.getElementById('btnStopCycle');
+  btn.disabled = true;
+  try {
+    const res = await api('/api/cycle/stop', { method: 'POST' });
+    alert(res && res.output ? res.output : '已发送停止指令。');
+    document.getElementById('runState').textContent = '已发送停止当前检测指令';
+    setTimeout(() => { document.getElementById('runState').textContent = '就绪'; }, 8000);
+  } catch (error) {
+    alert('发送失败：' + error.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // 只检测指定店铺（店铺卡片上的「检测此店铺」按钮）。
 async function runShopDetect(shopKey, btn) {
   if (!confirm(`确定只检测店铺「${shopKey}」吗？其他店铺本轮不受影响。`)) return;

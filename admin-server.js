@@ -283,6 +283,8 @@ function checkDaemonMonitor() {
 // 检测互斥锁：定时（daemon）与手动（--once）检测共用一个文件锁（见 monitor.js）。
 // 手动检测启动前先查锁：定时检测正在跑 → 拒绝启动（定时 45 分钟优先），不 spawn 子进程。
 const DETECT_LOCK_PATH = path.join(ROOT, 'data', 'detect-lock.json');
+// 「停止当前检测」指令：写入该文件，运行中的检测轮（定时或手动）在下一个店铺检查点读取并中断本轮。
+const STOP_CYCLE_FLAG_PATH = path.join(ROOT, 'data', 'stop-cycle.flag');
 function detectLockHolder() {
   try {
     const lock = JSON.parse(fs.readFileSync(DETECT_LOCK_PATH, 'utf8'));
@@ -946,6 +948,26 @@ const mainHandler = async (req, res) => {
       const result = await runOnce();
       // 业务拒绝/失败统一返回 200，前端按 result.ok 展示（非 2xx 会触发 fetch throw 吞掉消息）。
       sendJson(res, 200, result);
+      return;
+    }
+    // 停止当前检测轮次（无论定时还是手动正在跑）：写入中止指令（运行中的轮次在下一个店铺检查点中断），
+    // 若有手动子进程同时 SIGTERM 让它清理退出。与「停止自动检测」（暂停定时调度）语义不同。
+    if (req.method === 'POST' && url.pathname === '/api/cycle/stop') {
+      fs.mkdirSync(path.dirname(STOP_CYCLE_FLAG_PATH), { recursive: true });
+      fs.writeFileSync(STOP_CYCLE_FLAG_PATH, `stop at ${new Date().toISOString()}\n`, 'utf8');
+      let stoppedManual = false;
+      if (runOnceBusy && runOnceChild) {
+        stoppedManual = true;
+        try { runOnceChild.kill(); } catch (_) {}
+        setTimeout(() => { try { runOnceChild.kill('SIGKILL'); } catch (_) {} }, 10000);
+      }
+      sendJson(res, 200, {
+        ok: true,
+        stoppedManual,
+        output: stoppedManual
+          ? '已中止正在运行的手动检测，并通知定时检测中断本轮（若正在运行）。'
+          : '已通知正在运行的检测轮次中断本轮（若当前没有轮次在运行则无影响）。',
+      });
       return;
     }
     // 取消正在运行的手动检测。

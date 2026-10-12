@@ -48,6 +48,7 @@
             <div class="toolbar">
               <button class="btn-primary" id="btnRunOnce" onclick="runOnce()">立即检测一次（全部店铺）</button>
               <button class="btn-danger hidden" id="btnRunCancel" onclick="cancelRun()" title="中止正在运行的手动检测，不用等全部店铺跑完">取消检测</button>
+              <button class="btn-danger" id="btnStopCycle" onclick="stopCycle()" title="中断当前正在运行的检测轮次（无论定时还是手动），剩余店铺跳过，不影响下一轮定时">停止当前检测</button>
               <span class="sep"></span>
               <button class="btn-danger" id="btnPauseToggle" onclick="togglePause()">停止自动检测</button>
               <button class="btn-plain" onclick="loadResults()">刷新结果</button>

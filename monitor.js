@@ -297,6 +297,15 @@ async function writeState(state) {
 //   2. 手动检测结束后，下次定时以「手动结束时间 + interval」重新排期。
 const DETECT_LOCK_PATH = path.join(DATA_DIR, 'detect-lock.json');
 const MANUAL_DONE_PATH = path.join(DATA_DIR, 'manual-done.json');
+// 「停止当前检测」指令：网页管理端按钮写入该文件，运行中的检测轮（定时或手动）在下一个店铺检查点读取并中断本轮。
+const STOP_CYCLE_FLAG_PATH = path.join(DATA_DIR, 'stop-cycle.flag');
+
+function isStopCycleRequested() {
+  try { return fs.existsSync(STOP_CYCLE_FLAG_PATH); } catch (_) { return false; }
+}
+function removeStopCycleFlag() {
+  try { fs.unlinkSync(STOP_CYCLE_FLAG_PATH); } catch (_) {}
+}
 
 function readDetectLock() {
   try { return JSON.parse(fs.readFileSync(DETECT_LOCK_PATH, 'utf8')); } catch (_) { return null; }
@@ -1328,6 +1337,12 @@ async function runCycle(onlyShopKey) {
     // 单店铺最长耗时兜底：超过即放弃该店铺本轮检测（页面卡死时防止整轮永久挂起），保证整轮一定能收尾、时间戳一定会更新。
     const shopTimeoutMs = Math.max(5, Number(config.shopTimeoutMinutes) || 12) * 60 * 1000;
     for (const shop of shops) {
+      // 「停止当前检测」支持：每店检查中止标记，收到指令立即中断本轮，剩余店铺跳过。
+      if (isStopCycleRequested()) {
+        await log('warn', `收到「停止当前检测」指令，中止本轮检测（已处理 ${allResults.length} 条结果，剩余店铺跳过）。`);
+        removeStopCycleFlag();
+        break;
+      }
       let outcome;
       try {
         outcome = await withTimeout(runShop(config, shop), shopTimeoutMs, `[${shop.name}] 店铺检测`);
@@ -1542,6 +1557,8 @@ async function runCycle(onlyShopKey) {
       await writeState(state).catch(() => {});
     }
   } finally {
+    // 本轮已结束（正常完成或被中止指令中断）：清理未消费的「停止当前检测」标记，避免影响下一轮。
+    removeStopCycleFlag();
     running = false;
   }
 }
@@ -1566,6 +1583,8 @@ async function daemon() {
         await log('info', '监控已被网页管理端暂停（存在 data/monitor-paused.flag）。自动检测已停止，点「恢复检测」后继续。');
         pauseLogged = true;
       }
+      // 暂停期间没有轮次在跑：若残留「停止当前检测」指令则清除（该指令只对运行中的轮次有效）。
+      if (isStopCycleRequested()) removeStopCycleFlag();
       await new Promise((resolve) => setTimeout(resolve, 5000));
       continue;
     }
@@ -1581,6 +1600,18 @@ async function daemon() {
     await checkRecoveredFlags();
     const config = await loadConfig().catch(() => ({ intervalMinutes: 30 }));
     const baseMs = Math.max(Number(config.intervalMinutes) || 30, 1) * 60 * 1000;
+
+    // 手动检测刚结束（--once 结束时若检测前暂停了定时会自动恢复）：不立即触发，按「手动结束 + interval」等待下一轮。
+    const recentManualDone = await readManualDone();
+    if (recentManualDone && recentManualDone.ts && Date.now() - recentManualDone.ts < 2 * 60 * 1000) {
+      const targetAt = recentManualDone.ts + baseMs;
+      const leftMs = Math.max(0, targetAt - Date.now());
+      if (leftMs > 0) {
+        await log('info', `手动检测刚结束（${recentManualDone.doneAt}），按手动结束 + ${Math.round(baseMs / 60000)} 分钟等待，${Math.round(leftMs / 60000)} 分钟后执行下一轮。`);
+        await waitUntilTarget(targetAt);
+        if (stopRequested || isMonitorPaused()) continue;
+      }
+    }
 
     // 单实例互斥：手动检测正在跑 → 本轮定时让路，等手动结束后按「手动结束 + interval」排下一轮。
     const lockOk = await acquireDetectLock('daemon');
@@ -1626,6 +1657,8 @@ async function daemon() {
     let targetAt = Date.now() + baseMs;
     let lastManualTs = 0;
     while (!stopRequested && !isMonitorPaused()) {
+      // 等待期间没有轮次在跑：若收到「停止当前检测」指令则清除（该指令只对运行中的轮次有效）。
+      if (isStopCycleRequested()) removeStopCycleFlag();
       const manualDone = await readManualDone();
       if (manualDone && manualDone.ts && manualDone.ts > cycleStartAt && manualDone.ts !== lastManualTs) {
         lastManualTs = manualDone.ts;
@@ -1657,6 +1690,11 @@ if (process.argv.includes('--once')) {
       const l = readDetectLock();
       if (l && Number(l.pid) === process.pid) fs.unlinkSync(DETECT_LOCK_PATH);
     } catch (_) {}
+    removeStopCycleFlag();
+    // 若检测前为腾出手动检测而暂停了定时，取消时同样自动恢复，daemon 会按手动结束 + interval 排下一轮。
+    if (isMonitorPaused()) {
+      try { fs.unlinkSync(PAUSE_FLAG_PATH); } catch (_) {}
+    }
     process.exit(0);
   };
   process.on('SIGTERM', cleanupOnSignal);
@@ -1682,6 +1720,11 @@ if (process.argv.includes('--once')) {
     } finally {
       await releaseDetectLock();
       await markManualDone();
+      // 手动检测结束自动恢复定时（若检测前为腾出手动检测而暂停了定时）：删除暂停标记，daemon 会按手动结束 + interval 排下一轮。
+      if (isMonitorPaused()) {
+        try { fs.unlinkSync(PAUSE_FLAG_PATH); } catch (_) {}
+        await log('info', '手动检测结束：自动恢复定时检测（下次检测按手动结束时间 + 间隔重新排期）。');
+      }
     }
     process.exit(exitCode);
   })();
