@@ -756,7 +756,7 @@ async function cancelRun() {
 }
 
 // 停止当前检测轮次（无论定时还是手动正在跑）：中断本轮，剩余店铺跳过；不影响下一轮定时调度。
-// 与「停止自动检测」（暂停整个定时调度）语义不同。
+// 与「关闭定时检测」（关闭整个定时调度）语义不同。
 async function stopCycle() {
   if (!confirm('确定停止当前正在运行的检测轮次吗？\n\n将中断本轮检测（剩余店铺跳过），不影响下一轮定时自动检测。')) return;
   const btn = document.getElementById('btnStopCycle');
@@ -796,26 +796,26 @@ async function runShopDetect(shopKey, btn) {
   }
 }
 
-// 停止/恢复自动检测。
+// 开启/关闭定时检测。
 async function refreshPauseButton() {
   try {
     const data = await api('/api/monitor-state');
     monitorPaused = !!data.paused;
     const btn = document.getElementById('btnPauseToggle');
-    btn.textContent = data.paused ? '恢复自动检测' : '停止自动检测';
-    btn.className = data.paused ? 'btn-primary' : 'btn-danger';
-    btn.title = data.paused ? '当前已暂停，点击恢复按间隔自动巡检' : '暂停按间隔的自动巡检（手动「立即检测」不受影响）';
+    btn.textContent = data.paused ? '开启定时检测' : '关闭定时检测';
+    btn.className = data.paused ? 'btn-primary' : 'btn-danger-strong';
+    btn.title = data.paused ? '当前已关闭，点击恢复按间隔自动巡检' : '关闭按间隔的定时自动巡检（手动检测不受影响）';
   } catch (_) {}
 }
 
 async function togglePause() {
   const btn = document.getElementById('btnPauseToggle');
-  const pausing = btn.textContent.indexOf('停止') >= 0;
-  if (pausing && !confirm('确定停止自动检测吗？停止后不再按间隔巡检，直到点「恢复自动检测」。')) return;
+  const pausing = btn.textContent.indexOf('关闭') >= 0;
+  if (pausing && !confirm('确定要关闭定时检测吗？\n\n此操作后果严重：相当于关闭自动检测服务。\n关闭后不再按 45 分钟间隔自动巡检，商品/店铺异常将不再自动上报钉钉，直到你手动点击「开启定时检测」。\n\n请确认是否继续？')) return;
   btn.disabled = true;
   try {
     const data = await api('/api/monitor-state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused: pausing }) });
-    alert(data.paused ? '已停止自动检测（监控程序仍在运行，只是暂停巡检）。' : '已恢复自动检测。');
+    alert(data.paused ? '已关闭定时检测（监控程序仍在运行，只是不再自动巡检；如需继续监控请点击「开启定时检测」）。' : '已开启定时检测，将按间隔自动巡检。');
   } catch (error) {
     alert('操作失败：' + error.message);
   } finally {

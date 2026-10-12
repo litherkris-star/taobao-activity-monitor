@@ -150,6 +150,9 @@
   .btn-plain:hover { background: #f1f5fa; color: #163a75; border-color: #2563eb; }
   .btn-danger { background: #fdf0ef; color: #d64541; border: 1.5px solid #f3c6c2; }
   .btn-danger:hover { background: #fae2df; color: #c0392b; border-color: #e14b4b; }
+  /* 严重级操作按钮（关闭定时检测）：实心红底白字，比普通 .btn-danger 更醒目 */
+  .btn-danger-strong { background: #e5484d; color: #fff; border: 1.5px solid #e5484d; }
+  .btn-danger-strong:hover { background: #c0392b; color: #fff; border-color: #c0392b; }
   .btn-mini { padding: 4px 10px; font-size: 12px; border-radius: 5px; }
   .btn[disabled] { opacity: .5; cursor: not-allowed; }
   .btn-primary, .btn-detect { position: relative; overflow: hidden; }
