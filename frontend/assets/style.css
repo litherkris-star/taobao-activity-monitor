@@ -392,17 +392,6 @@
   .mecha-bg .corner.bl { bottom: 10px; left: 10px; border-right: none; border-top: none; border-radius: 0 0 0 6px; }
   .mecha-bg .corner.br { bottom: 10px; right: 10px; border-left: none; border-top: none; border-radius: 0 0 6px 0; }
   @keyframes cornerPulse { 0%, 100% { opacity: .3; } 50% { opacity: .95; } }
-  .mecha-bg .scan-line {
-    position: fixed; left: 0; right: 0; height: 2.5px; top: -4%;
-    background: linear-gradient(90deg, transparent 0%, rgba(56, 189, 248, .5) 30%, rgba(37, 99, 235, .75) 50%, rgba(56, 189, 248, .5) 70%, transparent 100%);
-    animation: bgScan 17s linear infinite;
-  }
-  @keyframes bgScan {
-    0% { top: -4%; opacity: 0; }
-    6% { opacity: 1; }
-    94% { opacity: 1; }
-    100% { top: 105%; opacity: 0; }
-  }
 
   /* --- 背景网格强化：加亮网格 + 电路点阵 --- */
   body::before {
