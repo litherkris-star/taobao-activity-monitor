@@ -30,6 +30,7 @@
   <div class="main">
     <div class="topbar">
       <span class="page-title" id="pageTitle">检测总览</span>
+      <span id="serviceDot" class="service-dot" title="服务状态检测中..."></span>
       <span id="saveState" class="muted" style="display:none"></span>
       <span class="spacer"></span>
       <select id="operatorInput" title="选择花名（操作人），操作日志会记录操作人；未选择花名不能保存修改" onchange="saveOperator()"><option value="" disabled selected hidden>请选择花名</option></select>
@@ -67,7 +68,13 @@
             <button class="btn-plain btn-mini" onclick="exportLog()" title="导出最近60分钟的检测日志到文件">导出最近一小时日志</button>
             <button class="btn-plain btn-mini" id="btnLogToggle" onclick="toggleLogMode()">查看原始日志</button>
           </div>
-          <div class="card-body"><div id="logLines" class="log-list">加载中...</div><pre class="log hidden" id="logTail">加载中...</pre></div>
+          <div class="card-body">
+            <div class="log-wrap">
+              <div id="logLines" class="log-list">加载中...</div>
+              <button id="logScrollDown" class="btn-plain btn-mini log-down-btn hidden" onclick="scrollLogToBottom()" title="回到最新日志">↓ 回到底部</button>
+            </div>
+            <pre class="log hidden" id="logTail">加载中...</pre>
+          </div>
         </div>
       </div>
 
@@ -118,6 +125,8 @@
           <div class="card-body">
             <div class="toolbar">
               <button class="btn-plain" onclick="addShop()">+ 添加店铺</button>
+              <button class="btn-plain btn-mini" onclick="expandAllShops()" title="一次展开全部店铺的表格">全部展开</button>
+              <button class="btn-plain btn-mini" onclick="collapseAllShops()" title="一次收起全部店铺的表格">全部收起</button>
               <span class="sep"></span>
               <input type="text" id="globalActivityName" placeholder="活动名称（一键通用）" style="width:170px">
               <button class="btn-plain" onclick="applyActivityNameAll()">活动名称应用到全部商品</button>

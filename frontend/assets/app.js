@@ -1,5 +1,7 @@
 let state = { shops: [], ownerPhones: {} };
 const PAGE_TITLES = { status: '检测总览', board: '信息看板', shops: '店铺与商品', alerts: '报警设置' };
+let monitorPaused = false;      // 自动检测是否已暂停（影响倒计时显示）
+let nextRunTimer = null;        // 下次检测倒计时的刷新定时器
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -415,6 +417,52 @@ function field(labelText, html, wide) {
   return `<label class="field${wide ? ' wide' : ''}">${labelText}${html}</label>`;
 }
 
+// 下次检测倒计时：最近检测时间 + 配置间隔推算，每秒刷新；暂停时显示「已暂停」。
+function startNextRunTimer(lastTimeText) {
+  const cell = document.getElementById('nextRunCell');
+  if (!cell) return;
+  if (nextRunTimer) clearInterval(nextRunTimer);
+  const intervalMin = Math.max(1, parseInt(document.getElementById('intervalInput').value, 10) || 30);
+  const base = lastTimeText ? new Date(String(lastTimeText).replace(' ', 'T')).getTime() : 0;
+  function tick() {
+    if (monitorPaused) { cell.textContent = '已暂停'; return; }
+    if (!base || !Number.isFinite(base)) { cell.textContent = '待首轮检测'; return; }
+    const remain = base + intervalMin * 60000 - Date.now();
+    if (remain <= 0) { cell.textContent = '即将检测'; return; }
+    const mm = Math.floor(remain / 60000);
+    const ss = Math.floor((remain % 60000) / 1000);
+    cell.textContent = (mm > 0 ? mm + ' 分 ' : '') + ss + ' 秒后';
+  }
+  tick();
+  nextRunTimer = setInterval(tick, 1000);
+}
+
+// ===== 店铺与商品：全部展开/收起 =====
+function expandAllShops() {
+  state.shops.forEach((_, i) => expandedShops.add(i));
+  renderShops();
+}
+function collapseAllShops() {
+  expandedShops.clear();
+  renderShops();
+}
+
+// ===== 顶栏服务状态指示灯 =====
+async function pollServiceHealth() {
+  const dot = document.getElementById('serviceDot');
+  if (!dot) return;
+  try {
+    const data = await api('/api/monitor/status');
+    dot.className = 'service-dot' + (data.running ? (data.paused ? ' paused' : ' ok') : ' err');
+    dot.title = data.running
+      ? '监控服务运行中' + (data.paused ? '（自动检测已暂停）' : '') + (data.pid ? '（PID ' + data.pid + '）' : '')
+      : '监控服务未运行，守护脚本将自动拉起';
+  } catch (_) {
+    dot.className = 'service-dot';
+    dot.title = '服务状态获取失败';
+  }
+}
+
 // 展开/收起状态（页面内保留，刷新后重置为收起）
 const expandedShops = new Set();
 
@@ -714,6 +762,7 @@ async function runShopDetect(shopKey, btn) {
 async function refreshPauseButton() {
   try {
     const data = await api('/api/monitor-state');
+    monitorPaused = !!data.paused;
     const btn = document.getElementById('btnPauseToggle');
     btn.textContent = data.paused ? '恢复自动检测' : '停止自动检测';
     btn.className = data.paused ? 'btn-primary' : 'btn-danger';
@@ -785,6 +834,8 @@ function renderLogLines(lines) {
     box._logScrollBound = true;
     box.addEventListener('scroll', () => {
       logAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+      const btn = document.getElementById('logScrollDown');
+      if (btn) btn.classList.toggle('hidden', logAtBottom);
     });
   }
   if (!lines || !lines.length) { box.innerHTML = '<div class="empty">（暂无日志）</div>'; return; }
@@ -804,6 +855,18 @@ function renderLogLines(lines) {
     </div>`).join('');
   // 停留在底部时自动滚到最新日志，不用手动下滑
   if (logAtBottom) box.scrollTop = box.scrollHeight;
+  const btn = document.getElementById('logScrollDown');
+  if (btn) btn.classList.toggle('hidden', logAtBottom);
+}
+
+// 日志回到底部（浮动按钮）
+function scrollLogToBottom() {
+  const box = document.getElementById('logLines');
+  if (!box) return;
+  box.scrollTop = box.scrollHeight;
+  logAtBottom = true;
+  const btn = document.getElementById('logScrollDown');
+  if (btn) btn.classList.add('hidden');
 }
 
 // 渲染操作日志
@@ -973,15 +1036,18 @@ async function loadResults() {
     const okCount = shops.filter((s) => !s.error).length;
     const summaryHtml = `
       <div class="stat-grid">
-        <div class="stat-cell"><div class="k">最近检测时间</div><div class="v" style="font-size:15px;font-weight:500;">${esc(results.time || '')}</div></div>
+        <div class="stat-cell"><div class="k">最近检测时间</div><div class="v no-slot" style="font-size:15px;font-weight:500;">${esc(results.time || '')}</div></div>
         <div class="stat-cell"><div class="k">店铺总数</div><div class="v"><span class="num" data-count="${shops.length}">0</span></div></div>
         <div class="stat-cell"><div class="k">正常</div><div class="v green"><span class="num" data-count="${okCount}">0</span></div></div>
         <div class="stat-cell"><div class="k">异常</div><div class="v red${shopErrors.length ? ' num-alarm' : ''}"><span class="num" data-count="${shopErrors.length}">0</span></div></div>
+        <div class="stat-cell"><div class="k">下次自动检测</div><div class="v no-slot" id="nextRunCell" style="font-size:15px;font-weight:500;">计算中...</div></div>
       </div>
       ${shopErrors.length ? `<div style="margin-bottom:14px;padding:12px 16px;background:#fdecec;border-radius:8px;font-size:12px;line-height:1.8;color:#c0392b;">${shopErrors.map((s) => `<div><b>${esc(s.name)}</b>：${esc(s.error)}</div>`).join('')}</div>` : ''}`;
     document.getElementById('resultSummary').innerHTML = summaryHtml;
     // 汇总数字滚动动画
     document.querySelectorAll('#resultSummary .num[data-count]').forEach((el) => animateNumber(el, Number(el.dataset.count) || 0));
+    // 下次检测倒计时（最近检测时间 + 配置间隔推算）
+    startNextRunTimer(results.time);
     renderResultGroups(results);
   } catch (error) {
     document.getElementById('resultSummary').innerHTML = `<div class="empty">加载失败：${esc(error.message)}</div>`;
@@ -1009,3 +1075,6 @@ function initOperator() {
 // 默认进入检测总览
 // 注意：花名下拉由 loadConfig 成功后的 initOperator() 初始化（提前初始化会因店铺还没加载而清空已保存的花名）。
 loadConfig().catch((error) => alert('加载配置失败：' + error.message));
+// 顶栏服务状态指示灯：启动时立即查一次，之后每 30 秒刷新。
+pollServiceHealth();
+setInterval(pollServiceHealth, 30000);

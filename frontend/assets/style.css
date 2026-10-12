@@ -482,3 +482,33 @@
   /* --- 滚动条：机甲蓝渐变滑块 --- */
   ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #93b4e8, #5f8fd6); border: 1px solid rgba(37, 99, 235, .25); }
   ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, #7fa6e0, #4a7cc9); }
+
+  /* ============================================================
+     UI 优化层：服务指示灯 / 日志回到底部 / 空态图标 / 能量槽微调
+     ============================================================ */
+
+  /* --- 顶栏服务状态指示灯（绿=运行中，黄=已暂停，红=未运行） --- */
+  .service-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    background: #9db0c9; flex-shrink: 0;
+    transition: background .3s ease, box-shadow .3s ease;
+  }
+  .service-dot.ok { background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, .16), 0 0 8px rgba(34, 197, 94, .45); }
+  .service-dot.paused { background: #d48806; box-shadow: 0 0 0 3px rgba(212, 136, 6, .16); }
+  .service-dot.err { background: #e14b4b; box-shadow: 0 0 0 3px rgba(225, 75, 75, .18); animation: dotErr 1.6s ease-in-out infinite; }
+  @keyframes dotErr { 0%, 100% { box-shadow: 0 0 0 3px rgba(225, 75, 75, .14); } 50% { box-shadow: 0 0 0 5px rgba(225, 75, 75, .3), 0 0 12px rgba(225, 75, 75, .55); } }
+
+  /* --- 日志容器：回到底部按钮 --- */
+  .log-wrap { position: relative; }
+  .log-down-btn {
+    position: absolute; right: 12px; bottom: 10px; z-index: 5;
+    box-shadow: 0 2px 8px rgba(30, 60, 110, .22);
+    opacity: .92;
+  }
+  .log-down-btn:hover { opacity: 1; }
+
+  /* --- 空态统一图标（监控雷达） --- */
+  .empty::before { content: '📡'; display: block; font-size: 26px; margin-bottom: 8px; opacity: .4; }
+
+  /* --- 文本型统计格不显示能量槽（只给数字格保留） --- */
+  .stat-cell .v.no-slot::after { display: none; }
