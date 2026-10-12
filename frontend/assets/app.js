@@ -437,14 +437,22 @@ function startNextRunTimer(lastTimeText) {
   nextRunTimer = setInterval(tick, 1000);
 }
 
-// ===== 店铺与商品：全部展开/收起 =====
-function expandAllShops() {
-  state.shops.forEach((_, i) => expandedShops.add(i));
+// ===== 店铺与商品：全部展开/收起（单按钮切换，点一下展开、再点收起） =====
+function toggleAllShops() {
+  if (!state.shops.length) return;
+  const allOpen = state.shops.every((_, i) => expandedShops.has(i));
+  if (allOpen) {
+    expandedShops.clear();
+  } else {
+    state.shops.forEach((_, i) => expandedShops.add(i));
+  }
   renderShops();
 }
-function collapseAllShops() {
-  expandedShops.clear();
-  renderShops();
+function syncToggleAllBtn() {
+  const btn = document.getElementById('btnToggleAll');
+  if (!btn) return;
+  const allOpen = state.shops.length > 0 && state.shops.every((_, i) => expandedShops.has(i));
+  btn.textContent = allOpen ? '全部收起' : '全部展开';
 }
 
 // ===== 顶栏服务状态指示灯 =====
@@ -567,6 +575,7 @@ function renderShops() {
       </div>
     </div>`;
   }).join('');
+  syncToggleAllBtn();
 }
 
 // 下载导入模板：必须带管理口令请求头（window.open 直接跳转带不上，会被口令拦截返回 JSON 错误页）。
