@@ -7,9 +7,9 @@
 // 3. 出现滑块/短信等验证且浏览器可见（人工可操作）时，等待人工完成，最长 challengeWaitSeconds 秒；
 // 4. 无法自动完成时返回 ok=false 和原因，由调用方决定报警或提示。
 
-const LOGIN_URL = 'https://login.taobao.com/';
+const LOGIN_URL = 'https://loginmyseller.taobao.com/';
 
-const LOGIN_URL_RE = /login\.taobao\.com|login\.tmall\.com|login\.alibaba|passport|mini-login|signin|\/login/i;
+const LOGIN_URL_RE = /loginmyseller\.taobao\.com|login\.taobao\.com|login\.tmall\.com|login\.alibaba|passport|mini-login|signin|\/login/i;
 const BACKEND_WORDS_RE = /活动报名|报名记录|营销活动|出售中的宝贝|已卖出的宝贝|商品管理|交易管理|商家中心/;
 const CHALLENGE_WORDS_RE = /滑块|拖动下方滑块|向右滑动|安全验证|短信验证|验证码|身份验证|扫码验证/;
 
