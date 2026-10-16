@@ -6,7 +6,7 @@
     "atAll": false,
     "atMobiles": []
   },
-  "intervalMinutes": 45,
+  "intervalMinutes": 60,
   "headless": true,
   "browserMode": "builtin",
   "chromeDebugPort": 9222,
@@ -17,7 +17,7 @@
   "notifyProductRecovery": false,
   "notifyShopRecovery": false,
   "errorAlertCooldownMinutes": 180,
-  "anomalyRepeatMinutes": 45,
+  "anomalyRepeatMinutes": 60,
   "ownerPhones": {
     "松柏": "19810621126",
     "豆芽": "13588305245",
