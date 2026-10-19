@@ -66,7 +66,7 @@
       "account": "蔻丝旗舰店:松柏",
       "password": "Shouna12345",
       "chromeDebugPort": 0,
-      "enabled": false,
+      "enabled": true,
       "verifyShopName": true,
       "products": [
         {
@@ -385,7 +385,7 @@
       "account": "收纳达人旗舰店:松柏",
       "password": "Shouna12345",
       "chromeDebugPort": 0,
-      "enabled": false,
+      "enabled": true,
       "verifyShopName": true,
       "products": [
         {
@@ -686,7 +686,7 @@
       "account": "英港旗舰店:松柏",
       "password": "Shouna12345",
       "chromeDebugPort": 0,
-      "enabled": false,
+      "enabled": true,
       "verifyShopName": true,
       "products": [
         {
@@ -1005,7 +1005,7 @@
       "account": "简约印相旗舰店:松柏",
       "password": "Shouna12345",
       "chromeDebugPort": 0,
-      "enabled": false,
+      "enabled": true,
       "verifyShopName": true,
       "products": [
         {
@@ -1108,7 +1108,7 @@
       "account": "良品主义旗舰店:松柏",
       "password": "Shouna12345",
       "chromeDebugPort": 0,
-      "enabled": false,
+      "enabled": true,
       "verifyShopName": true,
       "products": [
         {
@@ -1229,7 +1229,7 @@
       "account": "创庭旗舰店:松柏",
       "password": "Shouna12345",
       "chromeDebugPort": 0,
-      "enabled": false,
+      "enabled": true,
       "verifyShopName": true,
       "products": [
         {
@@ -1368,7 +1368,7 @@
       "account": "简居格旗舰店:松柏",
       "password": "Shouna12345",
       "chromeDebugPort": 0,
-      "enabled": false,
+      "enabled": true,
       "verifyShopName": true,
       "products": [
         {
@@ -1489,7 +1489,7 @@
       "account": "三方居旗舰店:松柏",
       "password": "Shouna12345",
       "chromeDebugPort": 0,
-      "enabled": false,
+      "enabled": true,
       "verifyShopName": true,
       "products": [
         {
@@ -1520,7 +1520,7 @@
       "account": "巧居格旗舰店:松柏",
       "password": "Shouna12345",
       "chromeDebugPort": 0,
-      "enabled": false,
+      "enabled": true,
       "verifyShopName": true,
       "products": [
         {
