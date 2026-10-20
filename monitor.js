@@ -632,31 +632,35 @@ async function scanAnomalyTab(page) {
     }
   }
   if (tab.count === 0) return { anomalyIds, declaredCount: 0 };
-  // 点击后等待列表真正切换：记录点击前首行商品ID，轮询到首行变化为止（最多 10 秒）。
-  // 背景：14:12 创庭曾“抓到 10 个（页面标注 1）”——点击异常 tab 后列表未切换，抓到的是默认列表第一页。
-  // 修复：无条件进入切换等待（不再用 wasActive 门）。轮询期间 tab 可能已被点击过（wasActive=true），
-  //       但 Fusion tabs 点击后 aria-selected 立即变 true、列表数据异步加载，tab 激活 ≠ 列表已切换；
-  //       若此时跳过等待直接抓取，会抓到旧列表（全部商品第一页 10 个），导致「抓到10个>标注7」反复误判。
-  //       统一等到「列表真正切换」再抓取：首行变化（或点击前空白时「出现首行 + tab 激活」双确认）。
-  const firstRowId = () => page.evaluate(() => {
-    const tr = document.querySelector('tr.next-table-row');
-    const m = tr && (tr.innerText || '').match(/商品ID\s*(\d{10,13})/);
-    return m ? m[1] : null;
-  }).catch(() => null);
-  const beforeFirst = await firstRowId();
+  // 点击后等待列表真正切换：记录点击前列表"前 5 行商品 ID 签名"，轮询到签名变化为止（最多 10 秒）。
+  // 背景：14:12 创庭曾"抓到 10 个（页面标注 1）"——点击异常 tab 后列表未切换，抓到的是默认列表第一页。
+  // 2026-10-20 良品主义：点击「异常」tab 后列表实际切换成功，但新列表首行与旧列表（全部商品）首行恰好相同
+  // （同一商品同时是全部列表第一行和异常列表第一行），仅凭"首行变化"10 秒观察不到 → 误判"列表未切换"。
+  // 修复：用前 5 行 ID 签名对比，首行巧合时仍能通过第 2-5 行识别出列表已切换；真未切换时签名必然不变，防误报能力不降。
+  // 统一等到「列表真正切换」再抓取：签名变化（或点击前空白时「出现行 + tab 激活」双确认）。
+  const firstRowsSignature = () => page.evaluate(() => {
+    const trs = Array.from(document.querySelectorAll('tr.next-table-row')).filter((el) => el.getBoundingClientRect().width > 0);
+    return trs.slice(0, 5).map((el) => {
+      const m = (el.innerText || '').match(/商品ID\s*(\d{10,13})/);
+      return m ? m[1] : null;
+    }).filter(Boolean).join(',');
+  }).catch(() => '');
+  const beforeSig = await firstRowsSignature();
+  const beforeFirst = beforeSig.split(',')[0] || null;
+  let listChanged = false;
   {
     // 无数字标注（如「异常」不带 (N)）说明当前没有异常商品：3 秒内确认空列表即可，不必等满 10 秒。
     const waitMs = tab.count === null ? 3000 : 10000;
-    let listChanged = false;
     let tabActive = false;
     for (let w = 0; w < waitMs; w += 500) {
       await page.waitForTimeout(500);
-      const now = await firstRowId();
-      // 点击前有行：首行变化才算切换成功；点击前无行（列表还没渲染出来）：
-      // 仅出现首行不足以证明点击生效（可能是渲染异常后默认列表自行加载），必须「出现首行 + tab 变为 active」双确认，
+      const nowSig = await firstRowsSignature();
+      const now = nowSig.split(',')[0] || null;
+      // 点击前有行：前 5 行签名变化才算切换成功；点击前无行（列表还没渲染出来）：
+      // 仅出现行不足以证明点击生效（可能是渲染异常后默认列表自行加载），必须「出现行 + tab 变为 active」双确认，
       // 堵住「点击异常tab未生效却抓到全部商品列表」的误报。
-      if (now && (beforeFirst === null || now !== beforeFirst)) listChanged = true;
-      if (beforeFirst === null) {
+      if (nowSig && (beforeSig === '' || nowSig !== beforeSig)) listChanged = true;
+      if (beforeSig === '') {
         tabActive = await page.evaluate(() => {
           const norm = (el) => (el.innerText || '').replace(/\s+/g, '');
           for (const sel of ['.next-tabs-tab-inner', '.next-tabs-tab', '[role="tab"]', '[class*="tab"]']) {
@@ -672,12 +676,12 @@ async function scanAnomalyTab(page) {
       }
       if (listChanged && (tabActive || beforeFirst !== null)) break;
     }
-    if (!listChanged || (beforeFirst === null && !tabActive)) {
+    if (!listChanged || (beforeSig === '' && !tabActive)) {
       if (tab.count === null || tab.count === 0) {
         // 页面未标注异常数量（如「异常」tab 不带数字）= 当前无异常商品，空列表属正常，视为无异常。
         scanError = '';
       } else {
-        scanError = beforeFirst === null
+        scanError = beforeSig === ''
           ? `扫描无效：点击「异常」tab 后商品列表未渲染且 tab 未激活（10 秒内无有效切换），页面标注 ${tab.count} 个异常但未加载。`
           : `扫描无效：点击「异常」tab 后列表未切换（点击前首行 ${beforeFirst}），疑似页面渲染异常。`;
       }
@@ -749,9 +753,16 @@ async function scanAnomalyTab(page) {
       const ids = [...anomalyIds];
       const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
       if (tab.count != null && anomalyIds.size > tab.count) {
-        // 标注 N 个异常、异常数少于每页容量时，第一页行数不应超过 N。抓到超过标注 =
-        // 混入了全部商品列表的行（列表未切换），此时部分比对结果不可信，升级为扫描无效。
-        scanError = `扫描无效：翻页失败停留在第 ${beforePageNo} 页，已抓 ${anomalyIds.size} 个超过页面标注 ${tab.count} 个，疑似列表未切换抓到全部商品；ID：${idList}`;
+        if (listChanged) {
+          // 前 5 行签名已变化 = 列表确认切换到「异常」名单。异常列表通常只有一页（≤10 行），
+          // 翻页失败（没有下一页）属正常；抓到数比页面标注略多（如 10 vs 9，标注滞后）时
+          // 保留已抓 ID 继续比对，不判扫描无效（避免良品主义式误杀）。仅记录警告。
+          scanError = `翻页失败：停留在第 ${beforePageNo} 页，已抓 ${anomalyIds.size} 个（页面标注 ${tab.count}）；列表已切换，异常数略超标注，已抓 ID 可用。ID：${idList}`;
+        } else {
+          // 未确认列表切换（签名未变）→ 抓到超过标注 = 混入了全部商品列表的行（列表未切换），
+          // 部分比对结果不可信，升级为扫描无效（防误报保护保持严格）。
+          scanError = `扫描无效：翻页失败停留在第 ${beforePageNo} 页，已抓 ${anomalyIds.size} 个超过页面标注 ${tab.count} 个，疑似列表未切换抓到全部商品；ID：${idList}`;
+        }
       } else {
         // 连点 3 次页码都没变：记下错误并停止本页扫描，已抓到的 ID 仍可用，不把错误污染到商品结果。
         scanError = `翻页失败：停留在第 ${beforePageNo} 页，已抓 ${anomalyIds.size} 个（页面标注 ${tab.count}）；ID：${idList}`;
