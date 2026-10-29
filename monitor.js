@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const fs = require('fs');
 const fsp = fs.promises;
@@ -784,11 +784,17 @@ async function scanAnomalyTab(page) {
     const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
     scanError = `扫描无效：异常名单抓到 ${anomalyIds.size} 个，远超页面标注 ${tab.count} 个，疑似点击「异常」tab 后列表未切换抓到全部商品；ID：${idList}`;
   } else if (tab.count == null && anomalyIds.size > 0) {
-    // 页面未标注异常数量（「异常」不带数字）= 当前应无异常商品（空列表）；却抓到商品行，
-    // 说明页面渲染不完整（数量未渲染出来）且抓到的是全部商品列表，判定扫描无效，刷新重扫兜底。
     const ids = [...anomalyIds];
     const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
-    scanError = `扫描无效：页面未标注异常数量却抓到 ${anomalyIds.size} 个（正常无标注=无异常），疑似页面渲染不完整、列表未切换抓到全部商品；ID：${idList}`;
+    if (listChanged) {
+      // 前 5 行签名已变 = 确认切到了「异常」名单，只是数量徽标没渲染出来（双11 重页面常见）。
+      // 此时抓到的是异常名单本身、可用：只记警告，不判扫描无效——否则整轮异常比对白丢、
+      // 店铺还会被判「店铺异常」，把一次渲染慢放大成一条红色报警。
+      await log('warn', `异常 tab 未标注数量但列表已确认切换：采用已抓到的 ${anomalyIds.size} 个 ID 继续比对；ID：${idList}`);
+    } else {
+      // 未确认切换（签名未变）：抓到的是全部商品列表，判定扫描无效，刷新重扫兜底。
+      scanError = `扫描无效：页面未标注异常数量却抓到 ${anomalyIds.size} 个（正常无标注=无异常），疑似页面渲染不完整、列表未切换抓到全部商品；ID：${idList}`;
+    }
   } else if (tab.count != null && anomalyIds.size !== tab.count) {
     const ids = [...anomalyIds];
     const idList = ids.length > 20 ? ids.slice(0, 20).join('、') + '…（共 ' + ids.length + ' 个）' : ids.join('、');
@@ -800,7 +806,11 @@ async function scanAnomalyTab(page) {
 // 翻页增强：单轮扫描若翻页失败或数量与页面标注不符，自动整轮重扫（重新点「异常」tab 回到第一页）。
 // 已抓到的异常 ID 跨轮合并保留（Set 去重），异常锁定能力更强——只要出现过就不丢。
 async function scanAnomalyTabWithRetry(page, retries = 2) {
-  const merged = new Set();
+  // 每轮重扫必须用「本轮独立」的集合。早先这里用跨轮累加的 merged，判定却仍是
+  // merged.size === declaredCount：第 1 次抓到超量（如 10 个 vs 页面标注 1 个）之后，
+  // 第 2 次明明已经抓到干净的 1 个（1 === 1），仍会因为累加值还是 10 ≠ 1 被判「数量不符」，
+  // 整轮异常比对白丢一次。改为每轮独立判定：哪一轮成功就采用哪一轮的结果。
+  let attemptIds = new Set();
   let declaredCount = null;
   let lastError = '';
   let invalidScans = 0;
@@ -818,26 +828,26 @@ async function scanAnomalyTabWithRetry(page, retries = 2) {
       }
       continue;
     }
-    scan.anomalyIds.forEach((id) => merged.add(id));
+    attemptIds = new Set(scan.anomalyIds || []);
     if (scan.declaredCount != null) declaredCount = scan.declaredCount;
-    if (!scan.error && (scan.declaredCount == null || merged.size === scan.declaredCount)) {
-      return { anomalyIds: merged, declaredCount, error: '' };
+    if (!scan.error && (scan.declaredCount == null || attemptIds.size === scan.declaredCount)) {
+      return { anomalyIds: attemptIds, declaredCount, error: '' };
     }
-    lastError = scan.error || (declaredCount != null && merged.size !== declaredCount
-      ? `数量不符：抓到 ${merged.size} 个，页面标注 ${declaredCount} 个` : '');
+    lastError = scan.error || (declaredCount != null && attemptIds.size !== declaredCount
+      ? `数量不符：抓到 ${attemptIds.size} 个，页面标注 ${declaredCount} 个` : '');
     if (attempt < retries) {
       await log('warn', `异常 tab 扫描第 ${attempt + 1} 次未完整（${lastError}），3 秒后自动重扫…`);
       await page.waitForTimeout(3000);
     }
   }
   if (invalidScans > 0) {
-    // 最终轮仍是扫描无效：整体丢弃（merged 不含无效轮数据），返回空名单 + 错误，
+    // 最终轮仍是扫描无效：整体丢弃（attemptIds 不含无效轮数据），返回空名单 + 错误，
     // 调用方据此抛错走瞬时重试/通知人工，绝不把抓错的“全部商品列表”当异常比对。
     await log('warn', `异常 tab 扫描 ${retries + 1} 次均判定扫描无效（${lastError}），已放弃本轮异常比对。`);
     return { anomalyIds: new Set(), declaredCount, error: lastError };
   }
-  await log('warn', `异常 tab 扫描 ${retries + 1} 次仍未完整（${lastError}），使用已抓到的 ${merged.size} 个 ID 继续本轮比对。`);
-  return { anomalyIds: merged, declaredCount, error: lastError };
+  await log('warn', `异常 tab 扫描 ${retries + 1} 次仍未完整（${lastError}），使用最后一轮抓到的 ${attemptIds.size} 个 ID 继续本轮比对。`);
+  return { anomalyIds: attemptIds, declaredCount, error: lastError };
 }
 
 // 只重启掉线店铺自己的 Chrome 窗口（独立用户目录 + 调试端口），不影响其他店铺的窗口。
@@ -897,17 +907,44 @@ async function ensureShopChrome(config, shop, debugPort) {
 
 async function maybeSendErrors(config, errors, state) {
   if (!errors.length || !config.notifyOnError || !hasNotificationChannel(config)) return false;
-  const key = errors.map((item) => `${item.shopKey}:${item.error}`).sort().join('|').slice(0, 1200);
   const now = Date.now();
-  const cooldown = config.errorAlertCooldownMinutes * 60 * 1000;
-  if (state.lastErrorKey === key && now - Number(state.lastErrorAlertAt || 0) < cooldown) return false;
+  const cooldownMinutes = Number(config.errorAlertCooldownMinutes) || 0;
+  const cooldown = cooldownMinutes * 60 * 1000;
+  // 冷却记账按「店铺 + 错误类别」而不是完整错误文本：完整文本里带商品 ID 与抓取数量，每轮都会变，
+  // 用它当 key 会让冷却永远失效（同一故障每轮重推一次），大促页面抖动期钉钉因此明显变吵。
+  const seen = (state.shopErrorAlertAt && typeof state.shopErrorAlertAt === 'object') ? state.shopErrorAlertAt : {};
+  const keyOf = (item) => `${item.shopKey}|${classifyShopError(item.error).title}`;
+  const fresh = [];
+  const suppressed = [];
+  for (const item of errors) {
+    const key = keyOf(item);
+    const lastAt = Number(seen[key] || 0);
+    if (cooldown > 0 && lastAt && now - lastAt < cooldown) suppressed.push({ key, item });
+    else fresh.push({ key, item });
+  }
+  // 账目自清理：只保留 2 个冷却周期内的记录，避免 state.json 无限增长。
+  const keepAfter = now - Math.max(cooldown * 2, 24 * 60 * 60 * 1000);
+  const nextSeen = {};
+  Object.keys(seen).forEach((key) => {
+    const ts = Number(seen[key]);
+    if (ts >= keepAfter) nextSeen[key] = ts;
+  });
+  state.shopErrorAlertAt = nextSeen;
+  if (suppressed.length) {
+    await log('info', `店铺故障通知已抑制（${cooldownMinutes} 分钟冷却内推过同类故障）：${suppressed.map(({ key }) => key).join('、')}`);
+  }
+  if (!fresh.length) return false;
+  const freshErrors = fresh.map(({ item }) => item);
   // 红级：店铺级故障（登录风控、页面加载失败、页面结构异常等），不受免打扰时段影响，立即推送。
-  await sendNotification(config, '【🔴 店铺故障】\n' + buildShopErrorMessage(errors).split('\n').join('\n\n'), {
+  await sendNotification(config, '【🔴 店铺故障】\n' + buildShopErrorMessage(freshErrors).split('\n').join('\n\n'), {
     markdown: true,
     title: '【🔴 店铺故障】请及时处理',
   });
-  state.lastErrorKey = key;
+  fresh.forEach(({ key }) => { state.shopErrorAlertAt[key] = now; });
+  // lastErrorKey/lastErrorAlertAt 保留为「最近一次店铺故障推送」的排查记录（网页端不读这两个字段）。
+  state.lastErrorKey = fresh.map(({ key }) => key).sort().join('|');
   state.lastErrorAlertAt = now;
+  await log('alarm', `店铺故障通知已发送（${fresh.length} 个店铺）：${fresh.map(({ key }) => key).join('、')}`);
   return true;
 }
 
@@ -1536,7 +1573,8 @@ async function runCycle(onlyShopKey) {
 
     state.lastSuccessAt = Date.now();
     state.lastSuccessText = localNow();
-    if (!shopErrors.length) state.lastErrorKey = '';
+    // 注意：这里**不要**因为「本轮无店铺故障」清空冷却账目。抖动店常一轮失败一轮成功，
+    // 一清空就等于下一轮又能推一次，等于把偶发抖动放大成刷屏。冷却按 state.shopErrorAlertAt 记时。
     // 异常持续时间记录（信息看板）：本轮异常开始 / 下一轮恢复生成持续段
     let processedShopKeys;
     if (cycleInterrupted) {
