@@ -3,8 +3,8 @@
 // 扫描是否会把它当成异常名单抓走（用户可见症状：日志「抓到 11 个，页面标注 1 个」）。
 //
 // 用法（在仓库根目录）：node tests/switch-loop.js
-//   退出码 0 = 抓到的 ID 数与页面标注一致（列表切换判定可靠）
-//   退出码 1 = 抓到的是「全部商品」列表（数量与标注不符）
+//   退出码 0 = 三条场景全部符合预期
+//   退出码 1 = 有场景不符合（抓到全部商品列表 / 把标注滞后误判成扫描无效）
 //
 // 现场（logs/monitor.log）：
 //   116519 英港「数量不符：抓到 11 个，页面标注 1 个」
@@ -45,15 +45,12 @@ const factory = new Function(
 );
 const api = factory(fakeRequire, SANDBOX, { exports: {} }, {}, process, MONITOR, console);
 
-// ---------- 假 DOM ----------
-// 时间线（与真机一致）：
-//   t0  点击「异常」tab，tab 立刻变成 active，但列表里还没有行（beforeSig === ''）
-//   t1  旧列表（全部商品，11 行）先渲染出来 —— 这就是被误抓的那一页
-//   t2  真正切到异常名单，只剩 1 行（页面标注的异常(1)）
-const STALE = Array.from({ length: 11 }, (_, i) => String(6210000000000 + i));
-const TRUE_IDS = ['6210000000005'];
+const ids = (n, base) => Array.from({ length: n }, (_, i) => String(base + i));
 
-function makeDom() {
+// ---------- 假 DOM ----------
+// 时间线（与真机一致）：点击「异常」tab → tab 立刻 active，列表还没行 →
+// 旧列表（全部商品）先渲染出来 → 真正切到异常名单。
+function makeDom(spec) {
   const state = { clicked: false, polls: 0, rows: [] };
   const mkRow = (id) => ({
     innerText: `商品名 ${id}\n商品ID ${id}`,
@@ -61,7 +58,7 @@ function makeDom() {
     querySelector: () => null,
   });
   const tab = {
-    innerText: '异常(1)',
+    innerText: `异常(${spec.declared})`,
     className: '',
     getAttribute: (n) => (n === 'aria-selected' ? (state.clicked ? 'true' : 'false') : null),
     setAttribute: () => {},
@@ -78,19 +75,21 @@ function makeDom() {
       return [];
     },
   };
-  return { state, doc, tick() {
-    state.polls += 1;
-    if (!state.clicked) { state.rows = []; return; }
-    if (state.polls <= 1) state.rows = [];              // 点击后列表还没刷新出来
-    else if (state.polls <= 5) state.rows = STALE.slice(); // 旧列表先到：全部商品 11 行
-    else state.rows = TRUE_IDS.slice();                 // 真正切到异常名单：1 行
-  } };
+  return {
+    state, doc,
+    tick() {
+      state.polls += 1;
+      if (!state.clicked) { return; }
+      if (state.polls <= spec.staleFrom - 1) state.rows = [];            // 点击后列表还没刷新出来
+      else if (state.polls <= spec.trueFrom - 1) state.rows = spec.stale; // 旧列表先到（全部商品）
+      else state.rows = spec.trueRows;                                    // 真正切到异常名单
+    },
+  };
 }
 
-async function runOnce(preRendered) {
-  const dom = makeDom();
-  // 对照组：点击前列表已经渲染出来（点击前签名非空），此时旧行不会晚到
-  if (preRendered) dom.state.rows = STALE.slice();
+async function runOnce(spec) {
+  const dom = makeDom(spec);
+  if (spec.preRendered) { dom.state.rows = spec.stale; dom.state.polls = 1; }
   global.document = dom.doc;
   const page = {
     // 每次等待推进一帧；不真正睡眠，保证循环是秒级且确定的
@@ -101,26 +100,36 @@ async function runOnce(preRendered) {
   };
   const scan = await api.scanAnomalyTab(page);
   delete global.document;
-  return { scan, polls: dom.state.polls };
+  return scan;
 }
 
-function report(label, expect, { scan }) {
+function report(label, expect, scan) {
   const got = [...(scan.anomalyIds || [])];
-  const declared = scan.declaredCount;
-  const ok = declared != null && got.length === declared;
+  const invalid = /^扫描无效/.test(scan.error || '');
+  const sizeOk = expect.size == null || got.length === expect.size;
+  const invalidOk = expect.noInvalidError ? !invalid : true;
+  const ok = sizeOk && invalidOk;
   console.log(`\n── ${label}`);
-  console.log('   页面标注异常数:', declared, '｜实际抓到:', got.length, got.slice(0, 3).join('、') + (got.length > 3 ? '…' : ''));
+  console.log('   页面标注:', scan.declaredCount, '｜实际抓到:', got.length, got.slice(0, 3).join('、') + (got.length > 3 ? '…' : ''));
   console.log('   scan.error:', scan.error || '(空)');
-  console.log(ok ? '   结果: PASS 抓到的是异常名单本身' : `   结果: FAIL 抓到 ${got.length} 个，页面标注 ${declared} 个 —— 抓到的是「全部商品」第一页`);
-  return ok === expect;
+  console.log(`   ${ok ? 'PASS' : 'FAIL'}  期望抓到 ${expect.size == null ? '(不限)' : expect.size} 个${expect.noInvalidError ? '、且不判扫描无效' : ''}`);
+  return ok;
 }
+
+const specs = {
+  // C1 故障现场：点击前列表还没渲染（beforeSig === ''），旧列表 11 行晚到
+  C1: { declared: 1, staleFrom: 2, trueFrom: 6, stale: ids(11, 6210000000000), trueRows: [ids(1, 6210000000005)[0]] },
+  // C2 对照组：点击前列表已渲染，签名能识别切换
+  C2: { declared: 1, staleFrom: 2, trueFrom: 6, stale: ids(11, 6210000000000), trueRows: [ids(1, 6210000000005)[0]], preRendered: true },
+  // C3 标注滞后：页面标注 9、真实名单 10 个（不该因为多 1 个被判扫描无效）
+  C3: { declared: 9, staleFrom: 2, trueFrom: 6, stale: ids(40, 6210000001000), trueRows: ids(10, 6210000002000) },
+};
 
 (async () => {
-  // C1 现场复现：点击前列表还没渲染（beforeSig === ''），旧列表晚到
-  const c1ok = report('C1 点击前列表未渲染（故障现场）', true, await runOnce(false));
-  // C2 对照组：点击前列表已渲染，签名能识别切换 —— 这一条应该一直绿
-  const c2ok = report('C2 对照组：点击前列表已渲染', true, await runOnce(true));
-  const ok = c1ok && c2ok;
+  const c1 = report('C1 点击前列表未渲染（故障现场）', { size: 1 }, await runOnce(specs.C1));
+  const c2 = report('C2 对照组：点击前列表已渲染', { size: 1 }, await runOnce(specs.C2));
+  const c3 = report('C3 标注滞后：标注 9、名单 10 个', { size: 10, noInvalidError: true }, await runOnce(specs.C3));
+  const ok = c1 && c2 && c3;
   console.log(ok ? '\n结论: PASS' : '\n结论: FAIL');
   process.exit(ok ? 0 : 1);
 })().catch((e) => {
