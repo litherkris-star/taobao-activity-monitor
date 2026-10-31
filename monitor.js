@@ -638,29 +638,35 @@ async function scanAnomalyTab(page) {
   // （同一商品同时是全部列表第一行和异常列表第一行），仅凭"首行变化"10 秒观察不到 → 误判"列表未切换"。
   // 修复：用前 5 行 ID 签名对比，首行巧合时仍能通过第 2-5 行识别出列表已切换；真未切换时签名必然不变，防误报能力不降。
   // 统一等到「列表真正切换」再抓取：签名变化（或点击前空白时「出现行 + tab 激活」双确认）。
-  const firstRowsSignature = () => page.evaluate(() => {
+  // 返回 { sig, count }：sig = 前 5 行商品 ID 签名，count = 当前可见行数（全部行，不只前 5 行）。
+  const firstRowsProbe = () => page.evaluate(() => {
     const trs = Array.from(document.querySelectorAll('tr.next-table-row')).filter((el) => el.getBoundingClientRect().width > 0);
-    return trs.slice(0, 5).map((el) => {
+    const ids = trs.slice(0, 5).map((el) => {
       const m = (el.innerText || '').match(/商品ID\s*(\d{10,13})/);
       return m ? m[1] : null;
-    }).filter(Boolean).join(',');
-  }).catch(() => '');
-  const beforeSig = await firstRowsSignature();
+    }).filter(Boolean);
+    return { sig: ids.join(','), count: trs.length };
+  }).catch(() => ({ sig: '', count: 0 }));
+  const before = await firstRowsProbe();
+  const beforeSig = before.sig;
   const beforeFirst = beforeSig.split(',')[0] || null;
   let listChanged = false;
   {
     // 无数字标注（如「异常」不带 (N)）说明当前没有异常商品：3 秒内确认空列表即可，不必等满 10 秒。
     const waitMs = tab.count === null ? 3000 : 10000;
     let tabActive = false;
+    let prevSig = beforeSig;
+    // 行数容差：页面标注会滞后几个（标注 9、实际 10 属正常），只在「远超标注」时否定切换。
+    const ROW_COUNT_SLACK = 3;
     for (let w = 0; w < waitMs; w += 500) {
       await page.waitForTimeout(500);
-      const nowSig = await firstRowsSignature();
-      const now = nowSig.split(',')[0] || null;
-      // 点击前有行：前 5 行签名变化才算切换成功；点击前无行（列表还没渲染出来）：
-      // 仅出现行不足以证明点击生效（可能是渲染异常后默认列表自行加载），必须「出现行 + tab 变为 active」双确认，
-      // 堵住「点击异常tab未生效却抓到全部商品列表」的误报。
-      if (nowSig && (beforeSig === '' || nowSig !== beforeSig)) listChanged = true;
+      const now = await firstRowsProbe();
+      const nowSig = now.sig;
       if (beforeSig === '') {
+        // 点击前列表还没渲染出来：此时「出现行」不能证明点击生效——旧列表（全部商品第一页）常常比
+        // 异常名单先渲染，行数也和标注（异常(1)）对不上，直接采信就会把整页全部商品当异常名单抓走
+        //（现场日志：「抓到 11 个，页面标注 1 个」）。改为三条件同时满足才算切换：
+        // ① tab 已激活 ② 连续两帧签名一致（列表已稳定）③ 行数没有远超页面标注。
         tabActive = await page.evaluate(() => {
           const norm = (el) => (el.innerText || '').replace(/\s+/g, '');
           for (const sel of ['.next-tabs-tab-inner', '.next-tabs-tab', '[role="tab"]', '[class*="tab"]']) {
@@ -673,8 +679,14 @@ async function scanAnomalyTab(page) {
           }
           return false;
         }).catch(() => false);
+        const countOk = tab.count == null || now.count <= tab.count + ROW_COUNT_SLACK;
+        if (!listChanged && tabActive && nowSig && nowSig === prevSig && countOk) listChanged = true;
+      } else if (nowSig && nowSig !== beforeSig) {
+        // 点击前有行：前 5 行签名变化才算切换成功（首行巧合时靠第 2-5 行识别）。
+        listChanged = true;
       }
       if (listChanged && (tabActive || beforeFirst !== null)) break;
+      prevSig = nowSig;
     }
     if (!listChanged || (beforeSig === '' && !tabActive)) {
       if (tab.count === null || tab.count === 0) {
